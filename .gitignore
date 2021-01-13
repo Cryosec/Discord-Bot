@@ -1,0 +1,11 @@
+/.env
+/Dockerfile
+/__pycache__
+/config.py
+/discord.log
+/jac_log.db.db
+/pretty_help
+/read_dbs.py
+/timed_events.db.db
+/todo
+/warnings.db
