@@ -37,7 +37,7 @@ class Events(commands.Cog):
         author = None
 
         # Read audit logs
-        async for log in guild.audit_logs(limit=5, action=discord.AuditLogAction.ban):
+        async for log in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
             if log.target == entry.user:
                 author = log.user
 
@@ -83,12 +83,14 @@ class Events(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message):
         # Message scanning happens here
-        # Remove message and warn user for discord invite
         if int(message.channel.id) == config.CLAN_CHAN:
             role = message.guild.get_role(config.MOD_ID)
             botrole = message.guild.get_role(config.BOT_ID)
+            
+            # Don't do anything if moderator sent message
             if role in message.author.roles:
                 return
+            # Don't do anything if bot (self) is talking
             if botrole in message.author.roles:
                 return
             # Save entries in JAC db, check if existence
@@ -137,7 +139,7 @@ class Events(commands.Cog):
                 pass
             else:
                 role = message.guild.get_role(config.MOD_ID)
-                # Whitelist mods+
+                # Whitelist mods, again
                 if role in message.author.roles:
                     pass
                 elif message.channel.id == config.CLAN_CHAN:
@@ -174,6 +176,7 @@ class Events(commands.Cog):
                     # Delete message
                     await message.delete()
 
+        # Delete and warn for use of blacklisted (offensive, racist and all that) words
         if any(word in message.content.lower() for word in config.BLACKLIST):
             role = message.guild.get_role(config.MOD_ID)
             if role in message.author.roles:

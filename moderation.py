@@ -199,7 +199,6 @@ class Moderation(commands.Cog):
     @commands.command(name='warn', brief=BRIEF_WARN, help=HELP_WARN)
     @commands.guild_only()
     async def warn(self, ctx, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
-        # TODO: create/load file with warnings for user. might need parsing?
 
         s = shelve.open(config.WARNINGS)
         if str(member.id) in s:
@@ -301,7 +300,6 @@ class Moderation(commands.Cog):
                     embed.set_footer(text=config.FOOTER)
 
                 s.close()
-                #channel = ctx.guild.get_channel(config.LOG_CHAN)
                 await ctx.send(content=None, embed=embed)
 
             else:
@@ -366,18 +364,17 @@ class Moderation(commands.Cog):
 
                 await ctx.send(content=None, embed=embed)
 
-    # !warnings = paged list of warnings
+    # !warns = paged list of warnings
     @commands.command(name='warns', brief=BRIEF_WARNINGS, help=HELP_WARNINGS)
     async def list_warnings(self, ctx):
         warns = shelve.open(config.WARNINGS)
         embeds= []
 
         for entry in warns:
-            #user = await self.bot.fetch_user(int(entry))
+            
             user = warns[entry]['tag']
             embed = discord.Embed(title = 'Warnings list', description = f'Current user: {user}', color=config.GREEN)
             embed.add_field(name="Warnings", value = '\n'.join('{}: {}'.format(*k) for k in enumerate(warns[entry]['reasons'])))
-            #embed.set_footer(text=config.FOOTER)
 
             embeds.append(embed)
         
@@ -416,7 +413,6 @@ class Moderation(commands.Cog):
 
         role = ctx.guild.get_role(config.MOD_ID)
         if role in member.roles:
-            # TODO: make embed?
             await ctx.send('You cannot kick a moderator through me.')
         else:
             s = shelve.open(config.WARNINGS)
@@ -541,7 +537,7 @@ class Moderation(commands.Cog):
 
                 t.close()
 
-    # !ban = kick user from server
+    # !ban = ban user from server
     @commands.command(name='ban')
     @commands.guild_only()
     async def ban_user(self, ctx, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
@@ -549,7 +545,6 @@ class Moderation(commands.Cog):
         role = ctx.guild.get_role(config.MOD_ID)
 
         if role in member.roles:
-            # TODO: make embed?
             await ctx.send('You cannot ban a moderator through me.')
         else:
             s = shelve.open(config.WARNINGS)
@@ -584,7 +579,7 @@ class Moderation(commands.Cog):
             await channel.send(content=None, embed=embed)
 
 
-    # Lundy insults
+    # Lundy insults, this one's an inside joke
     @commands.command(name='lundy')
     @commands.guild_only()
     async def lundy(self, ctx):
@@ -599,7 +594,7 @@ class Moderation(commands.Cog):
         answer = lundy.mention + ' ' + insult
         await ctx.channel.send(answer)
 
-
+    # Another inside joke with a different user
     @commands.command(nname="toxy")
     @commands.guild_only()
     async def toxy(self, ctx):

@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 import asyncio
 import config, shelve, pytz
 from datetime import datetime, timedelta
-#from .pretty_help import PrettyHelp, Navigation
 
 
 # System setup
@@ -52,6 +51,8 @@ async def on_ready():
     guild = await bot.fetch_guild(config.GUILD)
     channel = bot.get_channel(config.LOG_CHAN)
     await bot.wait_until_ready()
+
+    # Cycle shelve database to check for timed events to resume
     for mem in t:
         print(mem + '- Ban: ' + str(t[mem]['ban']) + ', Mute: ' + str(t[mem]['mute']))
         if t[mem]['mute']:
@@ -63,11 +64,8 @@ async def on_ready():
             if time < now:
                 print(f'\nUser {mem} needs to be unmuted.')
 
-                #guild = await bot.fetch_guild(config.GUILD)
                 member = await guild.fetch_member(int(mem))
                 role = guild.get_role(config.MUTE_ID)
-                
-                # embed
 
                 embed = discord.Embed(title = 'Timed mute complete',
                             description = f'User {member} has been unmuted automatically.',
@@ -89,7 +87,6 @@ async def on_ready():
 
             if time < now:
 
-                #guild = await bot.fetch_guild(config.GUILD)
                 user = await bot.fetch_user(int(mem))
 
                 embed = discord.Embed(title = 'Timed ban complete',
@@ -117,6 +114,7 @@ async def on_ready():
             del t[mem]
     t.close()
 
+    # JAC refers to channel join-a-clan, where clan ads are posted
     print('Checking if there are JAC logs to remove...')
 
     jac = shelve.open(config.JAC)
