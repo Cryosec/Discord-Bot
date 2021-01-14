@@ -601,6 +601,12 @@ class Moderation(commands.Cog):
 
         await ctx.message.channel.purge(limit = 1)
         await ctx.send("Shut the fuck up, toxy")
+        toxy = ctx.guild.get_member(config.TOXY_ID)
+        muted = ctx.guild.get_role(config.MUTE_ID)
+
+        await toxy.add_roles(muted)
+        await asyncio.sleep(30)
+        await toxy.remove_roles(muted)
 
 
      # Error handling
