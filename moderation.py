@@ -534,6 +534,7 @@ class Moderation(commands.Cog):
 
                 await channel.send(content=None, embed=embed)
                 await ctx.guild.unban(member, reason='Temp ban concluded')
+                del t[str(member.id)]
 
                 t.close()
 

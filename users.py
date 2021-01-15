@@ -10,6 +10,7 @@ ROLES_BRIEF = 'Get information about roles used in the server'
 TWITCH_BRIEF = 'Get information about the Twitch integration'
 PATREON_BRIEF = 'Get information about the Patreon integration'
 FAQ_BRIEF = 'Get information about the most frequently asked questions'
+JOINED_BRIEF = 'Get information about when you last joined the server'
 
 # Long text constants here
 HELP_INFO_USER = f'''
@@ -18,6 +19,7 @@ HELP_INFO_USER = f'''
 !roles  :: {ROLES_BRIEF}
 !twitch :: {TWITCH_BRIEF}
 !faq    :: {FAQ_BRIEF}
+!joined :: {JOINED_BRIEF}
 ```
 '''
 
@@ -27,6 +29,7 @@ HELP_INFO_MOD = f'''
 !roles  :: {ROLES_BRIEF}
 !twitch :: {TWITCH_BRIEF}
 !faq    :: {FAQ_BRIEF}
+!joined :: {JOINED_BRIEF}
 
 *Moderation available commands:*
 !mute   :: {mod.BRIEF_MUTE}
@@ -75,6 +78,8 @@ Members who are very knowledgeable about airsoft guns and gear. Granted case-by-
 Members who are experienced ArmA 3 veterans. Granted case-by-case by Mods/Admins.\n
 **Blockhead**
 Members who are way too much into Minecraft. Granted case-by-case by Mods/Admins.\n
+**Gamers**
+I don't know why this exists. Lottery wanted it so now we have it. Granted case-by-case by Mods/Admins\n
     
 """
 
@@ -123,7 +128,8 @@ class Users(commands.Cog):
     async def help(self, ctx, command=None):
         
         role = ctx.guild.get_role(config.MOD_ID)
-        if role in ctx.author.roles:
+        # if message author is a moderator
+        if role in ctx.message.author.roles:
             if command is None:
                 answer = HELP_INFO_MOD
 
@@ -153,16 +159,18 @@ class Users(commands.Cog):
                 embed.set_footer(text=config.FOOTER)
                 await ctx.send(content=None, embed=embed)
 
-
-        elif ctx.message.channel.id != config.UCMD_CHAN:
-            await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
+        # if message author is not a moderator
         else:
-            answer = HELP_INFO_USER
 
-            embed = discord.Embed(title='Commands information', description=answer, colour=config.BLUE)
-            embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
-            embed.set_footer(text=config.FOOTER)
-            await ctx.send(content=None, embed=embed)
+            if ctx.message.channel.id != config.UCMD_CHAN:
+                await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
+            else:
+                answer = HELP_INFO_USER
+
+                embed = discord.Embed(title='Commands information', description=answer, colour=config.BLUE)
+                embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
+                embed.set_footer(text=config.FOOTER)
+                await ctx.send(content=None, embed=embed)
 
             
 
@@ -173,7 +181,9 @@ class Users(commands.Cog):
     @commands.guild_only()
     async def roles(self, ctx):
 
-        if(ctx.message.channel.id != config.UCMD_CHAN):
+        role = ctx.guild.get_role(config.MOD_ID) 
+
+        if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
             await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
         else:
             answer = ROLES_INFO
@@ -188,7 +198,10 @@ class Users(commands.Cog):
     @commands.cooldown(1, 30, commands.BucketType.channel)
     @commands.guild_only()
     async def twitch(self, ctx):
-        if(ctx.message.channel.id != config.UCMD_CHAN):
+
+        role = ctx.guild.get_role(config.MOD_ID)
+
+        if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
             await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
         else:
             answer = TWITCH_INFO
@@ -204,7 +217,10 @@ class Users(commands.Cog):
     @commands.cooldown(1, 30, commands.BucketType.channel)
     @commands.guild_only()
     async def faq(self, ctx):
-        if(ctx.message.channel.id != config.UCMD_CHAN):
+
+        role = ctx.guild.get_role(config.MOD_ID)
+
+        if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
             await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
         else:
             answer = FAQ
@@ -214,6 +230,18 @@ class Users(commands.Cog):
             embed.set_footer(text=config.FOOTER)
             await ctx.send(content=None, embed=embed)
 
+    # Answer to command !joined
+    @commands.command(name="joined", brief=JOINED_BRIEF)
+    @commands.cooldown(1, 60, commands.BucketType.member)
+    @commands.guild_only()
+    async def joined(self, ctx):
+        role = ctx.guild.get_role(config.MOD_ID)
+
+        if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
+            await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
+        else:
+            timestamp = ctx.message.author.joined_at.strftime('%b-%d-%Y')
+            await ctx.send(f"{ctx.message.author.mention} you have joined the server on {timestamp}")
 
 def setup(bot):
     bot.add_cog(Users(bot))
