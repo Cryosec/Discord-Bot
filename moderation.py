@@ -21,6 +21,7 @@ BRIEF_DELETE = 'Delete last n messages from current chat'
 BRIEF_KICK = 'Kick specified user from the server'
 BRIEF_BAN = 'Ban specified user from the server'
 BRIEF_TEMPBAN = 'Temporarly ban user for set time'
+BRIEF_JAC = 'Get information on a user JAC log'
 
 # LONG descriptions of commands
 HELP_MUTE = '''**Usage:** 
@@ -71,7 +72,10 @@ number + specifier, where specifier is:
 **Example:** 
 `!tempban @Cryosec 1w2d7h` to ban user for 1 week, 2 days and 7 hours
 '''
-
+HELP_JAC = '''**Usage:**
+`!jac {user}` to get information on the link posted, when it was posted and how much time is left until they can post again.
+If said timer is negative, contact @Cryosec because it shouldn't happen.
+'''
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -579,6 +583,36 @@ class Moderation(commands.Cog):
             channel = ctx.guild.get_channel(config.LOG_CHAN)
             await channel.send(content=None, embed=embed)
 
+
+    # !jac = get details of user from jac db
+    @commands.command(name='jac')
+    @commands.guild_only()
+    async def jac_details(self, ctx, member: typing.Optional[discord.Member] = None):
+        jac = shelve.open(config.JAC)
+
+        if str(member.id) in jac:
+
+            tz_TX = pytz.timezone('US/Central')
+            now = datetime.now(tz_TX)
+            dt = datetime.strptime(jac[str(member.id)]['date'], "%b-%d-%Y %H:%M:%S")
+            dt = dt.replace(tzinfo=tz_TX)
+
+            end = dt + timedelta(days=14)
+
+            delta = end - now
+
+            embed = discord.Embed(title = f"User {member}",
+                                description = jac[str(member.id)]['link'],
+                                colour = config.GREEN)
+            embed.add_field(name = 'Timestamp',value = jac[str(member.id)]['date'])
+            embed.add_field(name = 'Time left', value = str(delta), inline=False)
+            embed.set_footer(text=config.FOOTER)
+
+            await ctx.send(content=None, embed=embed)
+        else:
+            await ctx.send('User is not in the database')
+
+        jac.close()
 
     # Lundy insults, this one's an inside joke
     @commands.command(name='lundy')

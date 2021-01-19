@@ -44,6 +44,7 @@ HELP_INFO_MOD = f'''
 !kick   :: {mod.BRIEF_KICK}
 !ban    :: {mod.BRIEF_BAN}
 !tempban:: {mod.BRIEF_TEMPBAN}
+!jac    :: {mod.BRIEF_JAC}
 
 == type !help <command> for specific help about that command.
 ```
@@ -151,6 +152,7 @@ class Users(commands.Cog):
                         'kick': mod.HELP_KICK,
                         'ban': mod.HELP_BAN,
                         'tempban': mod.HELP_TEMPBAN,
+                        'jac': mod.HELP_JAC,
                     }[x]
                 answer = f(command)
                 

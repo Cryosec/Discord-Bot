@@ -37,7 +37,7 @@ class Events(commands.Cog):
         author = None
 
         # Read audit logs
-        async for log in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
+        async for log in guild.audit_logs(limit=3, action=discord.AuditLogAction.ban):
             if log.target == entry.user:
                 author = log.user
 
@@ -102,7 +102,7 @@ class Events(commands.Cog):
                 await message.delete()
             else:
                 # Regexp the link
-                link = re.search(r"(?P<url>https?://discord.gg/[^\s]+)", message.content)
+                link = re.search(r"(?P<url>[https?://]*discord.gg/[^\s]+)", message.content)
                 
                 if link is None:
                     link = 'No link posted'
