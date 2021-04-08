@@ -3,6 +3,7 @@ from discord.ext import commands
 from datetime import datetime
 import config
 import moderation as mod
+import giveaway as ga
 
 ### CONSTANTS ###
 # Help messages by command
@@ -45,6 +46,7 @@ HELP_INFO_MOD = f'''
 !ban    :: {mod.BRIEF_BAN}
 !tempban:: {mod.BRIEF_TEMPBAN}
 !jac    :: {mod.BRIEF_JAC}
+!giveaway :: {ga.BRIEF_GA}
 
 == type !help <command> for specific help about that command.
 ```
@@ -60,7 +62,7 @@ Hand picked community members who have been around for years and keep the commun
 **Community Regular**
 Long time members of the community. Granted case-by-case by Admins.\n
 **YouTuber/Streamer**
-Content Creators. If you have a Channel/Stream with a sizable following, DM a Moderator/Admin with proof to get the role.\n
+Content Creators. This role is invite-only.\n
 **Patreon Operators**
 Members who support Drewski on Patreon, use !patreon for more information.\n
 **Twitch Subscriber**
@@ -153,6 +155,7 @@ class Users(commands.Cog):
                         'ban': mod.HELP_BAN,
                         'tempban': mod.HELP_TEMPBAN,
                         'jac': mod.HELP_JAC,
+                        'giveaway': ga.HELP_GA,
                     }[x]
                 answer = f(command)
                 
@@ -165,7 +168,7 @@ class Users(commands.Cog):
         else:
 
             if ctx.message.channel.id != config.UCMD_CHAN:
-                await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
+                await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
             else:
                 answer = HELP_INFO_USER
 
@@ -186,7 +189,7 @@ class Users(commands.Cog):
         role = ctx.guild.get_role(config.MOD_ID) 
 
         if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
-            await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
+            await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
         else:
             answer = ROLES_INFO
 
@@ -204,7 +207,7 @@ class Users(commands.Cog):
         role = ctx.guild.get_role(config.MOD_ID)
 
         if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
-            await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
+            await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
         else:
             answer = TWITCH_INFO
 
@@ -223,7 +226,7 @@ class Users(commands.Cog):
         role = ctx.guild.get_role(config.MOD_ID)
 
         if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
-            await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
+            await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
         else:
             answer = FAQ
 
@@ -240,10 +243,10 @@ class Users(commands.Cog):
         role = ctx.guild.get_role(config.MOD_ID)
 
         if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
-            await ctx.send(f'Use <#{config.UCMD_CHAN}> for bot commands.')
+            await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
         else:
             timestamp = ctx.message.author.joined_at.strftime('%b-%d-%Y')
-            await ctx.send(f"{ctx.message.author.mention} you have joined the server on {timestamp}")
+            await ctx.reply(f"You have joined the server on {timestamp}")
 
 def setup(bot):
     bot.add_cog(Users(bot))

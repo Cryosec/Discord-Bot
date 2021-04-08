@@ -2,8 +2,7 @@ import discord
 from discord.ext import commands
 import config
 import shelve, pytz
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 import random, typing
 import re, asyncio
 import DiscordUtils
@@ -118,7 +117,7 @@ class Moderation(commands.Cog):
             mods = re.findall(r'([0-9]+?[wdhms])+?', duration)
 
             if not mods:
-                await ctx.send('**ERROR**: `duration` format is incorrect. Use `!help mute` for more information on the correct format.')
+                await ctx.reply('**ERROR**: `duration` format is incorrect. Use `!help mute` for more information on the correct format.')
                 return
 
             dur = ''
@@ -269,7 +268,7 @@ class Moderation(commands.Cog):
                 s.close()
                 await Moderation.status(self, ctx, member.id)
         else:
-            await ctx.send(content='User is not a Member apparently.', embed=None)
+            await ctx.reply(content='User is not a Member apparently.', embed=None)
 
     # !status = give status on a member.
     # This includes number of warnings, kicks and bans
@@ -304,7 +303,7 @@ class Moderation(commands.Cog):
                     embed.set_footer(text=config.FOOTER)
 
                 s.close()
-                await ctx.send(content=None, embed=embed)
+                await ctx.reply(content=None, embed=embed)
 
             else:
                 s = shelve.open(config.WARNINGS)
@@ -319,7 +318,7 @@ class Moderation(commands.Cog):
                     embed.set_footer(text=config.FOOTER)
 
                     s.close()
-                    await ctx.send(content=None, embed=embed)
+                    await ctx.reply(content=None, embed=embed)
                 else:
                     embed = discord.Embed(title = f'Status of user {user}',
                                         description = '**User is not part of the server.**',
@@ -330,10 +329,10 @@ class Moderation(commands.Cog):
                     embed.add_field(name = 'Joined:', value = 'N/A')
                     embed.set_footer(text=config.FOOTER)
 
-                    await ctx.send(content=None, embed=embed)
+                    await ctx.reply(content=None, embed=embed)
 
         else:
-            await ctx.send('Something went wrong')
+            await ctx.reply('Something went wrong')
 
 
     # !timers = return all current timed events
@@ -358,7 +357,7 @@ class Moderation(commands.Cog):
                 timers.append(string)
 
             if not timers:
-                await ctx.send('**INFO**: There are no timers left.')
+                await ctx.reply('**INFO**: There are no timers left.')
             else:
 
                 embed = discord.Embed(title = 'Timers',
@@ -366,7 +365,7 @@ class Moderation(commands.Cog):
                                         colour = config.GREEN)
                 embed.set_footer(text=config.FOOTER)
 
-                await ctx.send(content=None, embed=embed)
+                await ctx.reply(content=None, embed=embed)
 
     # !warns = paged list of warnings
     @commands.command(name='warns', brief=BRIEF_WARNINGS, help=HELP_WARNINGS)
@@ -547,6 +546,10 @@ class Moderation(commands.Cog):
     @commands.guild_only()
     async def ban_user(self, ctx, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
 
+        if member is None:
+            await ctx.reply("No member found with ID, might not be in the server anymore.")
+            return
+
         role = ctx.guild.get_role(config.MOD_ID)
 
         if role in member.roles:
@@ -608,9 +611,9 @@ class Moderation(commands.Cog):
             embed.add_field(name = 'Time left', value = str(delta), inline=False)
             embed.set_footer(text=config.FOOTER)
 
-            await ctx.send(content=None, embed=embed)
+            await ctx.reply(content=None, embed=embed)
         else:
-            await ctx.send('User is not in the database')
+            await ctx.reply('User is not in the database')
 
         jac.close()
 
@@ -643,14 +646,24 @@ class Moderation(commands.Cog):
         await asyncio.sleep(30)
         await toxy.remove_roles(muted)
 
+    # Floppa Friday!
+    @commands.command(name="floppa")
+    @commands.guild_only()
+    async def floppa(self, ctx, member: discord.Member):
+        #await ctx.message.channel.purge(limit=1)
+        await ctx.send("I am the one who flops")
+        muted = ctx.guild.get_role(config.MUTE_ID)
+        await member.add_roles(muted)
+        await asyncio.sleep(30)
+        await member.remove_roles(muted)
 
      # Error handling
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send('Missing arguments, type `!help <command>` for info on your command.')
+            await ctx.reply('Missing arguments, type `!help <command>` for info on your command.')
         elif isinstance(error, commands.BadArgument):
-            await ctx.send('I could not find that user. Try again.')
+            await ctx.reply('I could not find that user. Try again.')
         
 
 

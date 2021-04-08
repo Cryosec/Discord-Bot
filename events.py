@@ -4,6 +4,7 @@ from datetime import datetime
 import pytz, shelve
 import config
 import re
+import asyncio
 
 
 class Events(commands.Cog):
@@ -211,6 +212,35 @@ class Events(commands.Cog):
                 await channel.send(content=None, embed=embed)
                 # Delete message
                 await message.delete()
+
+        if 'discord.com/channels/' in message.content:
+            link_reg = re.search(r"(?P<url>[https?://]*discord.com/channels/[^\s]+)", message.content)
+
+            if link_reg is  None:
+                return
+            else:
+                link_reg = link_reg.group("url")
+
+            #print(link_reg)
+            link = link_reg.split('/')
+
+            server_id = int(link[4])
+            channel_id = int(link[5])
+            #print(channel_id)
+            message_id = int(link[6])
+
+            channel = message.guild.get_channel(channel_id)
+            msg = await channel.fetch_message(message_id)
+
+            embed = discord.Embed(title = f"{msg.author}",
+                        description = msg.content,
+                        color = config.GREEN)
+            embed.set_thumbnail(url = msg.author.avatar_url)
+            embed.add_field(name = 'Channel', value = msg.channel)
+            embed.add_field(name = 'Time', value = msg.created_at.strftime('%b-%d-%Y %H:%M:%S') + ' UTC')
+            embed.set_footer(text=config.FOOTER)
+
+            await message.reply(embed = embed)
 
 def setup(bot):
     bot.add_cog(Events(bot))

@@ -21,7 +21,8 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 # Bot setup
 init_extensions = [ 'moderation',
                     'users',
-                    'events']
+                    'events',
+                    'giveaway',]
 
 intents = discord.Intents.default()
 intents.presences = True
@@ -44,7 +45,10 @@ if __name__ == '__main__':
 # When bot is loaded up and ready
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user.name} - {bot.user.id}\nAPI version: {discord.__version__}\n')
+    print(f'\nLogged in as {bot.user.name} - {bot.user.id}\nAPI version: {discord.__version__}\n')
+    tz_TX = pytz.timezone('US/Central')
+    current_time = datetime.now(tz_TX).strftime('%b-%d-%Y %H:%M:%S')
+    print(f'Current time and date (Texas): {current_time}')
     print('Checking if I missed some unbanning or unmuting...')
     t = shelve.open(config.TIMED, writeback=True)
 
@@ -121,15 +125,18 @@ async def on_ready():
     for elem in jac:
         # setup current time
         tz_TX = pytz.timezone('US/central')
-        now_string = datetime.now(tz_TX).strftime('%b-%d-%Y %H:%M:%S')
-        now = datetime.strptime(now_string, '%b-%d-%Y %H:%M:%S')
-        time = datetime.strptime(jac[elem]['date'],'%b-%d-%Y %H:%M:%S')
+        now_string = datetime.now(tz_TX).strftime('%b-%d-%Y')
+        now = datetime.strptime(now_string, '%b-%d-%Y')
+        time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y')
         delta = timedelta(days=14)
         newtime = time + delta
 
-        if newtime < now:
+        # check if same day or passed
+        if newtime <= now:
+            print(f'Removing entry for {elem}')
             del jac[elem]
 
+    jac.close()
     print('Done!')
 
 
