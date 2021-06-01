@@ -46,9 +46,9 @@ if __name__ == '__main__':
 @bot.event
 async def on_ready():
     print(f'\nLogged in as {bot.user.name} - {bot.user.id}\nAPI version: {discord.__version__}\n')
-    tz_TX = pytz.timezone('US/Central')
-    current_time = datetime.now(tz_TX).strftime('%b-%d-%Y %H:%M:%S')
-    print(f'Current time and date (Texas): {current_time}')
+    tz_IT = pytz.timezone('Europe/Rome')
+    current_time = datetime.now(tz_IT).strftime('%b-%d-%Y %H:%M:%S')
+    print(f'Current time and date (UTC+1): {current_time}')
     print('Checking if I missed some unbanning or unmuting...')
     t = shelve.open(config.TIMED, writeback=True)
 

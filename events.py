@@ -138,6 +138,8 @@ class Events(commands.Cog):
             # Whitelist drew's link
             if 'discord.gg/drewski' in message.content:
                 pass
+            elif 'discord.gg/hoggit' in message.content:
+                pass
             else:
                 role = message.guild.get_role(config.MOD_ID)
                 # Whitelist mods, again
@@ -213,6 +215,7 @@ class Events(commands.Cog):
                 # Delete message
                 await message.delete()
 
+        # Embed the linked message showing content and author
         if 'discord.com/channels/' in message.content:
             link_reg = re.search(r"(?P<url>[https?://]*discord.com/channels/[^\s]+)", message.content)
 
@@ -221,12 +224,10 @@ class Events(commands.Cog):
             else:
                 link_reg = link_reg.group("url")
 
-            #print(link_reg)
             link = link_reg.split('/')
 
             server_id = int(link[4])
             channel_id = int(link[5])
-            #print(channel_id)
             message_id = int(link[6])
 
             channel = message.guild.get_channel(channel_id)

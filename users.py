@@ -245,8 +245,13 @@ class Users(commands.Cog):
         if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
             await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
         else:
-            timestamp = ctx.message.author.joined_at.strftime('%b-%d-%Y')
-            await ctx.reply(f"You have joined the server on {timestamp}")
+            if (ctx.message.author.id == config.TOXY_ID):
+                await ctx.reply("Stop using this command constantly, toxy")
+            elif (ctx.message.author.id == config.GOOZ_ID):
+                await ctx.reply("Stop using this command constantly, gooz")
+            else:
+                timestamp = ctx.message.author.joined_at.strftime('%b-%d-%Y')
+                await ctx.reply(f"You have joined the server on {timestamp}")
 
 def setup(bot):
     bot.add_cog(Users(bot))

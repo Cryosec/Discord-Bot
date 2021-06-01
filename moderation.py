@@ -291,6 +291,7 @@ class Moderation(commands.Cog):
                     embed.add_field(name = 'Kicks:', value = s[str(member.id)]['kicks'])
                     embed.add_field(name = 'Bans:', value = s[str(member.id)]['bans'])
                     embed.add_field(name = 'Joined:', value = member.joined_at.strftime('%b-%d-%Y %H:%M:%S'))
+                    embed.add_field(name = 'Created:', value = member.created_at.strftime('%b-%d-%Y %H:%M:%S'))
                     embed.set_footer(text=config.FOOTER)
                 else:
                     embed = discord.Embed(title = f'Status of user {member}',
@@ -300,6 +301,8 @@ class Moderation(commands.Cog):
                     embed.add_field(name = 'Kicks:', value = '0')
                     embed.add_field(name = 'Bans:', value = '0')
                     embed.add_field(name = 'Joined:', value = member.joined_at.strftime('%b-%d-%Y %H:%M:%S'))
+                    embed.add_field(name = 'Created:', value = member.created_at.strftime('%b-%d-%Y %H:%M:%S'))
+
                     embed.set_footer(text=config.FOOTER)
 
                 s.close()
