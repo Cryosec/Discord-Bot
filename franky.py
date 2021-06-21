@@ -68,20 +68,25 @@ async def on_ready():
             if time < now:
                 print(f'\nUser {mem} needs to be unmuted.')
 
-                member = await guild.fetch_member(int(mem))
-                role = guild.get_role(config.MUTE_ID)
+                try:
+                    member = await guild.fetch_member(int(mem))
+                    role = guild.get_role(config.MUTE_ID)
 
-                embed = discord.Embed(title = 'Timed mute complete',
-                            description = f'User {member} has been unmuted automatically.',
-                            colour=config.YELLOW)
-                embed.set_footer(text=config.FOOTER)
+                    embed = discord.Embed(title = 'Timed mute complete',
+                                description = f'User {member} has been unmuted automatically.',
+                                colour=config.YELLOW)
+                    embed.set_footer(text=config.FOOTER)
 
-                await channel.send(content=None, embed=embed)
-                await member.remove_roles(role)
+                    await channel.send(content=None, embed=embed)
+                    await member.remove_roles(role)
 
+                except:
+                    print('\nError in fetching user, removing entry from db...')
+                
                 t[mem]['mute'] = False
                 t[mem]['endMute'] = None
                 t.sync()
+
 
         if t[mem]['ban']:
             time = datetime.strptime(t[mem]['endBan'], '%b-%d-%Y %H:%M:%S')
@@ -107,8 +112,10 @@ async def on_ready():
             
             elif time > now:
                 print(f'\nUser {mem} is tempbanned. Adding to wait...')
+                t.close()
                 await asyncio.sleep((time - now).total_seconds())
                 await guild.unban(user)
+                t = shelve.open(config.TIMED)
                 t[mem]['ban'] = False
                 t[mem]['endBan'] = None
                 t.sync()
@@ -138,7 +145,6 @@ async def on_ready():
 
     jac.close()
     print('Done!')
-
 
 # Manage errors globally
 @bot.event

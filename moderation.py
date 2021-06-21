@@ -81,8 +81,11 @@ class Moderation(commands.Cog):
     
     # Check if command from Moderator
     async def cog_check(self, ctx):
-        role = ctx.guild.get_role(config.MOD_ID)
-        if role in ctx.author.roles:
+        mod = ctx.guild.get_role(config.MOD_ID)
+        admin = ctx.guild.get_role(config.ADMIN_ID)
+        if mod in ctx.author.roles:
+            return True
+        elif admin in ctx.author.roles:
             return True
         else:
             return False
@@ -281,7 +284,20 @@ class Moderation(commands.Cog):
             user = await self.bot.fetch_user(user)
             member = ctx.guild.get_member(user.id)
 
+
             if member is not None:
+
+                # Is nitro boosting
+                if member.premium_since is not None:
+                    boosting = member.premium_since.strftime('%b-%d-%Y')
+                else:
+                    boosting = 'Not boosting'
+
+                # Roles
+                roles = member.roles
+                role_mentions = [role.mention for role in roles]
+                role_list = ", ".join(role_mentions)
+
                 s = shelve.open(config.WARNINGS)
                 if str(member.id) in s:
                     embed = discord.Embed(title = f'Status of user {member}',
@@ -292,6 +308,8 @@ class Moderation(commands.Cog):
                     embed.add_field(name = 'Bans:', value = s[str(member.id)]['bans'])
                     embed.add_field(name = 'Joined:', value = member.joined_at.strftime('%b-%d-%Y %H:%M:%S'))
                     embed.add_field(name = 'Created:', value = member.created_at.strftime('%b-%d-%Y %H:%M:%S'))
+                    embed.add_field(name = 'Boosting since', value=boosting, inline=False)
+                    embed.add_field(name = 'Roles', value = role_list, inline=False)
                     embed.set_footer(text=config.FOOTER)
                 else:
                     embed = discord.Embed(title = f'Status of user {member}',
@@ -302,6 +320,8 @@ class Moderation(commands.Cog):
                     embed.add_field(name = 'Bans:', value = '0')
                     embed.add_field(name = 'Joined:', value = member.joined_at.strftime('%b-%d-%Y %H:%M:%S'))
                     embed.add_field(name = 'Created:', value = member.created_at.strftime('%b-%d-%Y %H:%M:%S'))
+                    embed.add_field(name = 'Boosting since', value=boosting, inline=False)
+                    embed.add_field(name = 'Roles', value = role_list, inline=False)
 
                     embed.set_footer(text=config.FOOTER)
 

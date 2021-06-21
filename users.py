@@ -4,6 +4,7 @@ from datetime import datetime
 import config
 import moderation as mod
 import giveaway as ga
+import pytz
 
 ### CONSTANTS ###
 # Help messages by command
@@ -12,6 +13,7 @@ TWITCH_BRIEF = 'Get information about the Twitch integration'
 PATREON_BRIEF = 'Get information about the Patreon integration'
 FAQ_BRIEF = 'Get information about the most frequently asked questions'
 JOINED_BRIEF = 'Get information about when you last joined the server'
+ME_BRIEF = 'Get information on your Account in the server. Once per day.'
 
 # Long text constants here
 HELP_INFO_USER = f'''
@@ -20,7 +22,7 @@ HELP_INFO_USER = f'''
 !roles  :: {ROLES_BRIEF}
 !twitch :: {TWITCH_BRIEF}
 !faq    :: {FAQ_BRIEF}
-!joined :: {JOINED_BRIEF}
+!me     :: {ME_BRIEF}
 ```
 '''
 
@@ -30,7 +32,7 @@ HELP_INFO_MOD = f'''
 !roles  :: {ROLES_BRIEF}
 !twitch :: {TWITCH_BRIEF}
 !faq    :: {FAQ_BRIEF}
-!joined :: {JOINED_BRIEF}
+!me     :: {ME_BRIEF}
 
 *Moderation available commands:*
 !mute   :: {mod.BRIEF_MUTE}
@@ -77,10 +79,20 @@ Members who are knowledgable/experienced with aircraft. Granted case-by-case by 
 Members who are very knowledgeable about real steel firearms. Granted case-by-case by Mods/Admins.\n
 **Airsoft Nerds**
 Members who are very knowledgeable about airsoft guns and gear. Granted case-by-case by Mods/Admins.\n
+**Gasoline Addicts**
+Vroom vroom goes the role for those who loves vehicles. Granted case-by-case by Mods/Admins.\n
+**Stonkychonk**
+This is not the role you're looking for. Move along.\n
+**Tarkov Escapist**
+Members who are experiend Tarkov players. Granted case-by-case by Mods/Admins.\n
 **Arma Vet**
 Members who are experienced ArmA 3 veterans. Granted case-by-case by Mods/Admins.\n
 **Blockhead**
 Members who are way too much into Minecraft. Granted case-by-case by Mods/Admins.\n
+**StarNerd**
+Star Wars nerds. Kinda self explanatory. Granted case-by-case by Mods/Admins.\n
+**Chef**
+Quite obvious from the name. People who know how to cook something good-looking and not disgusting. Granted case-by-case by Mods/Admins.\n
 **Gamers**
 I don't know why this exists. Lottery wanted it so now we have it. Granted case-by-case by Mods/Admins\n
     
@@ -156,6 +168,7 @@ class Users(commands.Cog):
                         'tempban': mod.HELP_TEMPBAN,
                         'jac': mod.HELP_JAC,
                         'giveaway': ga.HELP_GA,
+                        'users': HELP_INFO_USER,
                     }[x]
                 answer = f(command)
                 
@@ -176,8 +189,6 @@ class Users(commands.Cog):
                 embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
                 embed.set_footer(text=config.FOOTER)
                 await ctx.send(content=None, embed=embed)
-
-            
 
     # Answer to command !roles
     @commands.command(name='roles', brief=ROLES_BRIEF)
@@ -236,9 +247,9 @@ class Users(commands.Cog):
             await ctx.send(content=None, embed=embed)
 
     # Answer to command !joined
-    @commands.command(name="joined", brief=JOINED_BRIEF)
-    @commands.cooldown(1, 60, commands.BucketType.member)
-    @commands.guild_only()
+    #@commands.command(name="joined", brief=JOINED_BRIEF)
+    #@commands.cooldown(1, 60, commands.BucketType.member)
+    #@commands.guild_only()
     async def joined(self, ctx):
         role = ctx.guild.get_role(config.MOD_ID)
 
@@ -248,10 +259,50 @@ class Users(commands.Cog):
             if (ctx.message.author.id == config.TOXY_ID):
                 await ctx.reply("Stop using this command constantly, toxy")
             elif (ctx.message.author.id == config.GOOZ_ID):
+                await ctx.message.author.add_roles(config.MUTE_ID)
                 await ctx.reply("Stop using this command constantly, gooz")
+                await asyncio.sleep(20)
+                await ctx.message.author.remove_roles(config.MUTE_ID)
             else:
                 timestamp = ctx.message.author.joined_at.strftime('%b-%d-%Y')
                 await ctx.reply(f"You have joined the server on {timestamp}")
+
+    # Anser to command !me
+    @commands.command(name="me", brief=ME_BRIEF)
+    @commands.cooldown(1, 86400, commands.BucketType.member)
+    @commands.guild_only()
+    async def me(self, ctx):
+        member = ctx.message.author
+
+        embed = discord.Embed(title=f'Information on {member.name}#{member.discriminator}', colour = member.colour)
+        embed.set_thumbnail(url = member.avatar_url)
+
+        # Account age
+        creation_date = member.created_at.strftime('%b-%d-%Y')
+        
+        #Last join
+        joined = ctx.message.author.joined_at.strftime('%b-%d-%Y')
+
+        # Is nitro boosting
+        if member.premium_since is not None:
+            boosting = member.premium_since.strftime('%b-%d-%Y')
+        else:
+            boosting = 'Not boosting'
+
+        # Roles
+        roles = member.roles
+        role_mentions = [role.mention for role in roles]
+        role_list = ", ".join(role_mentions)
+
+        embed.add_field(name='Creation date', value=creation_date, inline=True)
+        embed.add_field(name='Last join', value=joined, inline=True)
+        embed.add_field(name='Boosting since', value=boosting, inline=False)
+        embed.add_field(name='Roles', value = role_list, inline=False)
+
+        embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
+        embed.set_footer(text=config.FOOTER)
+
+        await ctx.reply(embed=embed)
 
 def setup(bot):
     bot.add_cog(Users(bot))
