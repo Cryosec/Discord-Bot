@@ -1,4 +1,7 @@
+# pylint: disable=F0401
 import discord
+from discord_slash import SlashCommand
+import logging
 from discord.ext import commands
 import config
 import shelve, pytz
@@ -98,6 +101,8 @@ class Moderation(commands.Cog):
         channel = ctx.guild.get_channel(config.LOG_CHAN)
         role = ctx.guild.get_role(config.MUTE_ID)
 
+        logging.info(f"Muting {member}.")
+
         if 'a' in duration:
 
             await member.add_roles(role)
@@ -176,8 +181,11 @@ class Moderation(commands.Cog):
             t.close()
             await channel.send(content=None, embed=embed)
 
+            logging.info(f"Mute timer started: {int(delta.total_seconds())}s")
             await asyncio.sleep(int(delta.total_seconds()))
             await member.remove_roles(role)
+
+            logging.info("Muting removed.")
 
             t = shelve.open(config.TIMED)
 
@@ -200,34 +208,37 @@ class Moderation(commands.Cog):
         role = ctx.guild.get_role(config.MUTE_ID)
         await member.remove_roles(role)
 
-
     # !warn = give a warning to member
     @commands.command(name='warn', brief=BRIEF_WARN, help=HELP_WARN)
     @commands.guild_only()
     async def warn(self, ctx, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
+        logging.info(f"Warning {member}...")
+        try:
+            s = shelve.open(config.WARNINGS)
+            if str(member.id) in s:
+                tmp = s[str(member.id)]
+                tmp['warnings'] = tmp.get('warnings') + 1
+                tmp['reasons'].append(reason)
+                s[str(member.id)] = tmp
 
-        s = shelve.open(config.WARNINGS)
-        if str(member.id) in s:
-            tmp = s[str(member.id)]
-            tmp['warnings'] = tmp.get('warnings') + 1
-            tmp['reasons'].append(reason)
-            s[str(member.id)] = tmp
+            else:
+                s[str(member.id)] = {'warnings': 1, 'kicks': 0, 'bans': 0, 'reasons': [reason], 'tag': str(member)}
 
-        else:
-            s[str(member.id)] = {'warnings': 1, 'kicks': 0, 'bans': 0, 'reasons': [reason], 'tag': str(member)}
+            channel = ctx.guild.get_channel(config.LOG_CHAN)
+            embed = discord.Embed(title = 'Warning issued!',
+                                description = f'Reason: {reason}',
+                                colour=config.YELLOW)
+            embed.add_field(name = 'User:', value = f'{member}')
+            embed.add_field(name = 'Issued by:', value = f'{ctx.author}')
+            embed.add_field(name = 'Total Warnings:', value = s[str(member.id)]['warnings'])
+            embed.set_footer(text=config.FOOTER)
 
-        channel = ctx.guild.get_channel(config.LOG_CHAN)
-        embed = discord.Embed(title = 'Warning issued!',
-                            description = f'Reason: {reason}',
-                            colour=config.YELLOW)
-        embed.add_field(name = 'User:', value = f'{member}')
-        embed.add_field(name = 'Issued by:', value = f'{ctx.author}')
-        embed.add_field(name = 'Total Warnings:', value = s[str(member.id)]['warnings'])
-        embed.set_footer(text=config.FOOTER)
+            s.close()
 
-        s.close()
-
-        await channel.send(content=None, embed=embed)
+            await channel.send(content=None, embed=embed)
+            logging.info("Done.")
+        except:
+            logging.error(f"Error while attempting to mute {member}")
 
     # !unwarn = removes last warning
     @commands.command(name='unwarn', brief=BRIEF_UNWARN, help=HELP_UNWARN)
@@ -357,7 +368,6 @@ class Moderation(commands.Cog):
         else:
             await ctx.reply('Something went wrong')
 
-
     # !timers = return all current timed events
     @commands.command(name='timers')
     @commands.guild_only()
@@ -413,8 +423,6 @@ class Moderation(commands.Cog):
 
         await paginator.run(embeds)
 
-
-
     # !delete = delete n messages from chat
     @commands.command(name='delete', brief=BRIEF_DELETE, help=HELP_DELETE)
     @commands.guild_only()
@@ -430,7 +438,6 @@ class Moderation(commands.Cog):
         embed.set_footer(text=config.FOOTER)
         
         await channel.send(content=None, embed=embed)
-
 
     # !kick = kick user from server
     @commands.command(name='kick')
@@ -469,9 +476,9 @@ class Moderation(commands.Cog):
             s.close()
 
             await ctx.guild.kick(member, reason=reason)
+            logging.info(f"User {member} was kicked.")
             channel = ctx.guild.get_channel(config.LOG_CHAN)
             await channel.send(content=None, embed=embed)
-
 
     # !tempban = temporarily ban user
     @commands.command(name='tempban', brief=BRIEF_TEMPBAN, help=HELP_TEMPBAN)
@@ -606,6 +613,7 @@ class Moderation(commands.Cog):
             s.close()
 
             await ctx.guild.ban(member, reason=reason)
+            logging.info(f"User {member} was banned.")
             channel = ctx.guild.get_channel(config.LOG_CHAN)
             await channel.send(content=None, embed=embed)
 
@@ -660,6 +668,7 @@ class Moderation(commands.Cog):
     @commands.guild_only()
     async def toxy(self, ctx):
 
+        logging.info("Toxy initiated, waiting 30s...")
         await ctx.message.channel.purge(limit = 1)
         await ctx.send("Shut the fuck up, toxy")
         toxy = ctx.guild.get_member(config.TOXY_ID)
@@ -668,7 +677,8 @@ class Moderation(commands.Cog):
         await toxy.add_roles(muted)
         await asyncio.sleep(30)
         await toxy.remove_roles(muted)
-
+        logging.info("Toxy terminated.")
+        
     # Floppa Friday!
     @commands.command(name="floppa")
     @commands.guild_only()
@@ -676,10 +686,11 @@ class Moderation(commands.Cog):
         #await ctx.message.channel.purge(limit=1)
         await ctx.send("I am the one who flops")
         muted = ctx.guild.get_role(config.MUTE_ID)
+        logging.info("Floppa initiated, waiting 30s...")
         await member.add_roles(muted)
         await asyncio.sleep(30)
         await member.remove_roles(muted)
-
+        logging.info("Floppa terminated.")
      # Error handling
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):

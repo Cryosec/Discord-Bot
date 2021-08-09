@@ -1,7 +1,9 @@
+# pylint: disable=F0401
 import os, sys, traceback
 import logging
 import discord
 from discord.ext import commands
+from discord_slash import SlashCommand
 from dotenv import load_dotenv
 import asyncio
 import config, shelve, pytz
@@ -20,14 +22,17 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 
 # Bot setup
 init_extensions = [ 'moderation',
+                    'moderation-slash',
                     'users',
-                    'events',
-                    'giveaway',]
+                    'users-slash',
+                    'events']
 
 intents = discord.Intents.default()
 intents.presences = True
 intents.members = True
 bot = commands.Bot(command_prefix='!', help_command=None, intents=intents)
+
+slash = SlashCommand(bot, sync_commands=True)
 
 timelines = []
 
@@ -45,17 +50,37 @@ if __name__ == '__main__':
 # When bot is loaded up and ready
 @bot.event
 async def on_ready():
-    print(f'\nLogged in as {bot.user.name} - {bot.user.id}\nAPI version: {discord.__version__}\n')
+    print(f'\nLogged in as {bot.user.name} - {bot.user.id}\nAPI version: {discord.__version__}')
     tz_IT = pytz.timezone('Europe/Rome')
     current_time = datetime.now(tz_IT).strftime('%b-%d-%Y %H:%M:%S')
     print(f'Current time and date (UTC+1): {current_time}')
-    print('Checking if I missed some unbanning or unmuting...')
-    t = shelve.open(config.TIMED, writeback=True)
-
+    
     guild = await bot.fetch_guild(config.GUILD)
     channel = bot.get_channel(config.LOG_CHAN)
     await bot.wait_until_ready()
 
+    # JAC refers to channel join-a-clan, where clan ads are posted
+    print('Checking if there are JAC logs to remove...')
+
+    jac = shelve.open(config.JAC)
+    for elem in jac:
+        # setup current time
+        tz_TX = pytz.timezone('US/central')
+        now_string = datetime.now(tz_TX).strftime('%b-%d-%Y')
+        now = datetime.strptime(now_string, '%b-%d-%Y')
+        time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y')
+        delta = timedelta(days=14)
+        newtime = time + delta
+
+        # check if same day or passed
+        if newtime <= now:
+            print(f'Removing entry for {elem}')
+            del jac[elem]
+
+    jac.close()
+
+    print('Checking if I missed some unbanning or unmuting...')
+    t = shelve.open(config.TIMED, writeback=True)
     # Cycle shelve database to check for timed events to resume
     for mem in t:
         print(mem + '- Ban: ' + str(t[mem]['ban']) + ', Mute: ' + str(t[mem]['mute']))
@@ -125,30 +150,12 @@ async def on_ready():
             del t[mem]
     t.close()
 
-    # JAC refers to channel join-a-clan, where clan ads are posted
-    print('Checking if there are JAC logs to remove...')
-
-    jac = shelve.open(config.JAC)
-    for elem in jac:
-        # setup current time
-        tz_TX = pytz.timezone('US/central')
-        now_string = datetime.now(tz_TX).strftime('%b-%d-%Y')
-        now = datetime.strptime(now_string, '%b-%d-%Y')
-        time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y')
-        delta = timedelta(days=14)
-        newtime = time + delta
-
-        # check if same day or passed
-        if newtime <= now:
-            print(f'Removing entry for {elem}')
-            del jac[elem]
-
-    jac.close()
+    
     print('Done!')
 
 # Manage errors globally
 @bot.event
 async def on_command_error(ctx, error):
-    print(error)
+    log.error(error)
 
 bot.run(TOKEN, bot=True, reconnect=True)

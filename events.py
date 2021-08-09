@@ -1,4 +1,6 @@
+# pylint: disable=F0401
 import discord
+import logging
 from discord.ext import commands
 from datetime import datetime
 import pytz, shelve
@@ -10,6 +12,7 @@ import asyncio
 class Events(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.reacts = ['❌', '✅']
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
@@ -39,7 +42,7 @@ class Events(commands.Cog):
 
         # Read audit logs
         async for log in guild.audit_logs(limit=3, action=discord.AuditLogAction.ban):
-            if log.target == entry.user:
+            if log.target == user:
                 author = log.user
 
         embed = discord.Embed(title = 'User Ban',
@@ -101,6 +104,8 @@ class Events(commands.Cog):
             if str(message.author.id) in jac:
                 await issue_warn(self, s, message, f"**WARNING:** {message.author.mention}, you have already posted in the last 14 days.")
                 await message.delete()
+                
+                logging.info(f"JAC Warning issued to {message.author.name}#{message.author.discriminator}")
             else:
                 # Regexp the link
                 link = re.search(r"(?P<url>[https?://]*discord.gg/[^\s]+)", message.content)
@@ -117,6 +122,9 @@ class Events(commands.Cog):
                             # Issue warning as link already exists
                             await issue_warn(self, s, message, f"**WARNING:** {message.author.mention}, link has already been posted in the last 14 days.")
                             await message.delete()
+
+                            logging.info(f"JAC Warning issued to {message.author.name}#{message.author.discriminator}")
+
                             s.close()
                             jac.close()
                             return
@@ -134,6 +142,73 @@ class Events(commands.Cog):
             s.close()
             jac.close()
 
+        # Find if .ru urls in message - CS:GO spam filter
+        ru_link = re.search(r"(?P<url>https?://[^\s]+)", message.content)
+
+        if ru_link is not None:
+
+            logging.info("SPAM FILTER: Intercepted link - " + ru_link.group("url"))
+            if any(x in ru_link.group("url") for x in config.SCAMLIST):
+
+                logging.warning("SPAM FILTER: Intercepted link is in SCAMLIST.")
+                #await message.author.add_roles(config.MUTE_ID)
+                
+                await message.delete()
+
+                if ru_link.group("url") not in config.SCAM:
+                    config.SCAM.append(ru_link.group("url"))
+
+                    # TODO: create embed and add reactions for a mod to ban
+                    
+                    embed = discord.Embed(title = "Possible scam - manual review",
+                                        description = "Review the blocked message ",
+                                        colour = config.RED)
+                    embed.add_field(name = 'Suspicious message', value = message.content, inline=False)                    
+                    embed.add_field(name = 'Suspicious link', value = ru_link.group("url"))
+                    embed.add_field(name = 'Author', value = message.author.mention)
+                    embed.set_footer(text=config.FOOTER)
+
+                    channel = message.guild.get_channel(config.LOG_CHAN)
+                    manual_check = await channel.send(embed=embed)
+
+                    for emoji in self.reacts:
+                        try:
+                            await manual_check.add_reaction(emoji)
+                        except:
+                            pass
+
+                    # This might not work with multiple messages blocked
+                    def check(reaction, user):
+                        return reaction.emoji in self.reacts and reaction.message.id == manual_check.id and user.id != self.bot.user.id
+
+                    reaction, react_user = await self.bot.wait_for('reaction_add', check = check)
+
+                    # if user reacts with ✅
+                    if str(reaction.emoji) == self.reacts[1]:
+                        
+                        for react in manual_check.reactions:
+                            
+                            if react.message.author.id == self.bot.user.id:
+                                try:
+                                    await manual_check.remove_reaction(str(reaction.emoji), react.message.author)
+                                except:
+                                    pass
+                        # ban if not mod
+                        modrole = message.guild.get_role(config.MOD_ID) 
+                        if modrole not in message.author.roles:
+                            await message.author.ban(reason = f'CS:GO spam confirmed by {react_user.mention}', delete_message_days=0)
+                            config.SCAM.remove(ru_link.group("url"))
+                    
+                    # if user reacts with ❌
+                    if str(reaction.emoji) == self.reacts[0]:
+                        for react in manual_check.reactions:
+                            if react.message.author.id == self.bot.user.id:
+                                try:
+                                    await manual_check.remove_reaction(str(reaction.emoji), react.message.author)
+                                except:
+                                    pass
+                        config.SCAM.remove(ru_link.group("url"))
+
         if 'discord.gg/' in message.content:
             # Whitelist drew's link
             if 'discord.gg/drewski' in message.content:
@@ -150,6 +225,7 @@ class Events(commands.Cog):
                 else:
                     # Create warning message
                     await message.channel.send(f'**WARNING:** {message.author.mention}, do not post invite links.')
+                    logging.info(f"Invite Link Warning issued to {message.author.name}#{message.author.discriminator}")
 
                     reason = f'User posted invite link in {message.channel}'
                     s = shelve.open(config.WARNINGS)
@@ -186,6 +262,8 @@ class Events(commands.Cog):
                 pass
             else:
                 await message.channel.send(f'**WARNING:** {message.author.mention}, Use of offensive terms is prohibited.')
+
+                logging.info(f"Offensive word Warning issued to {message.author.name}#{message.author.discriminator}")
 
                 reason = f'User sent prohibited word in {message.channel}'
                 s = shelve.open(config.WARNINGS)
@@ -294,3 +372,4 @@ async def issue_warn(self, s, message, warning):
 
     channel = message.guild.get_channel(config.LOG_CHAN)
     await channel.send(content=None, embed=embed)
+    

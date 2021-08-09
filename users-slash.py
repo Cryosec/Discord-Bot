@@ -5,10 +5,11 @@ from datetime import datetime
 import config
 import moderation as mod
 import giveaway as ga
-import pytz, asyncio
+import pytz
+from discord_slash import SlashCommand, cog_ext, SlashContext
+from discord_slash.utils.manage_commands import create_option, create_permission, create_choice
+from discord_slash.model import SlashCommandPermissionType
 
-### CONSTANTS ###
-# Help messages by command
 ROLES_BRIEF = 'Get information about roles used in the server'
 TWITCH_BRIEF = 'Get information about the Twitch integration'
 PATREON_BRIEF = 'Get information about the Patreon integration'
@@ -16,44 +17,6 @@ FAQ_BRIEF = 'Get information about the most frequently asked questions'
 JOINED_BRIEF = 'Get information about when you last joined the server'
 ME_BRIEF = 'Get information on your Account in the server. Once per day.'
 
-# Long text constants here
-HELP_INFO_USER = f'''
-```asciidoc
-*User available commands:*
-!roles  :: {ROLES_BRIEF}
-!twitch :: {TWITCH_BRIEF}
-!faq    :: {FAQ_BRIEF}
-!me     :: {ME_BRIEF}
-```
-'''
-
-HELP_INFO_MOD = f'''
-```asciidoc
-*User available commands:*
-!roles  :: {ROLES_BRIEF}
-!twitch :: {TWITCH_BRIEF}
-!faq    :: {FAQ_BRIEF}
-!me     :: {ME_BRIEF}
-
-*Moderation available commands:*
-!mute   :: {mod.BRIEF_MUTE}
-!unmute :: {mod.BRIEF_UNMUTE}
-!warn   :: {mod.BRIEF_WARN}
-!unwarn :: {mod.BRIEF_UNWARN}
-!warns  :: {mod.BRIEF_WARNINGS}
-!cwarn  :: {mod.BRIEF_CLEAR}
-!status :: {mod.BRIEF_STATUS}
-!timers :: {mod.BRIEF_TIMERS}
-!delete :: {mod.BRIEF_DELETE}
-!kick   :: {mod.BRIEF_KICK}
-!ban    :: {mod.BRIEF_BAN}
-!tempban:: {mod.BRIEF_TEMPBAN}
-!jac    :: {mod.BRIEF_JAC}
-!giveaway :: {ga.BRIEF_GA}
-
-== type !help <command> for specific help about that command.
-```
-'''
 
 ROLES_INFO = """
 **Lord Franklin's Servants**
@@ -133,101 +96,63 @@ You can type `!twitch` or `!patreon` for details on how to link those accounts t
 Every text channel has a description at the top which you can click on to expand and view fully, it also highly advised to check the pinned messages for important information/guidelines by clicking the push pin icon at the top right of the channel.\n
 
 """
-class Users(commands.Cog):
+
+class UsersSlash(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # Answer to command !help
-    @commands.command(name='help')
-    #@commands.cooldown(1, 30, commands.BucketType.channel)
-    @commands.guild_only()
-    async def help(self, ctx, command=None):
-
-        await ctx.send(embed = discord.Embed(title = 'Type / to see the list of available commands'))
-        
-        
-    # Answer to command !roles
-    @commands.command(name='roles', brief=ROLES_BRIEF)
-    # 1 usage every 30 seconds per channel
+    # /roles Command
     @commands.cooldown(1, 30, commands.BucketType.channel)
-    @commands.guild_only()
-    async def roles(self, ctx):
+    @cog_ext.cog_slash(
+        name = 'roles',
+        description = ROLES_BRIEF,
+        guild_ids = [config.GUILD]
+    )
+    async def roles(self, ctx: SlashContext): 
 
-        role = ctx.guild.get_role(config.MOD_ID) 
+        embed = discord.Embed(title='Roles information', description=ROLES_INFO, colour=config.BLUE)
+        embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
+        embed.set_footer(text=config.FOOTER)
+        await ctx.send(content=None, embed=embed)
 
-        if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
-            await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
-        else:
-            answer = ROLES_INFO
 
-            embed = discord.Embed(title='Roles information', description=answer, colour=config.BLUE)
-            embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
-            embed.set_footer(text=config.FOOTER)
-            await ctx.send(content=None, embed=embed)
-
-    # Answer to command !twitch
-    @commands.command(name='twitch', brief=TWITCH_BRIEF)
+    # /twitch Command
     @commands.cooldown(1, 30, commands.BucketType.channel)
-    @commands.guild_only()
-    async def twitch(self, ctx):
+    @cog_ext.cog_slash(
+        name = 'twitch',
+        description = TWITCH_BRIEF,
+        guild_ids = [config.GUILD]
+    )
+    async def twitch(self, ctx: SlashContext):
 
-        role = ctx.guild.get_role(config.MOD_ID)
+        embed = discord.Embed(title='Twitch information', url=TWTICH_URL, description=TWITCH_INFO, colour=config.PURPLE)
+        embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
+        embed.set_footer(text=config.FOOTER)
+        await ctx.send(content=None, embed=embed)
 
-        if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
-            await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
-        else:
-            answer = TWITCH_INFO
-
-            embed = discord.Embed(title='Twitch information', url=TWTICH_URL, description=answer, colour=config.PURPLE)
-            embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
-            embed.set_footer(text=config.FOOTER)
-            await ctx.send(content=None, embed=embed)
-
-
-    # Answer to command !faq
-    @commands.command(name="faq", brief=FAQ_BRIEF)
+    # /faq Command
     @commands.cooldown(1, 30, commands.BucketType.channel)
-    @commands.guild_only()
-    async def faq(self, ctx):
+    @cog_ext.cog_slash(
+        name = 'faq',
+        description = FAQ_BRIEF,
+        guild_ids = [config.GUILD]
+    )
+    async def faq(self, ctx: SlashContext):
 
-        role = ctx.guild.get_role(config.MOD_ID)
+        embed = discord.Embed(title='Fequently Asked Questions', description=FAQ, colour=config.BLUE)
+        embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
+        embed.set_footer(text=config.FOOTER)
+        await ctx.send(content=None, embed=embed)
 
-        if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
-            await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
-        else:
-            answer = FAQ
 
-            embed = discord.Embed(title='Fequently Asked Questions', description=answer, colour=config.BLUE)
-            embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
-            embed.set_footer(text=config.FOOTER)
-            await ctx.send(content=None, embed=embed)
-
-    # Answer to command !joined
-    #@commands.command(name="joined", brief=JOINED_BRIEF)
-    #@commands.cooldown(1, 60, commands.BucketType.member)
-    #@commands.guild_only()
-    async def joined(self, ctx):
-        role = ctx.guild.get_role(config.MOD_ID)
-
-        if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
-            await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
-        else:
-            if (ctx.message.author.id == config.TOXY_ID):
-                await ctx.reply("Stop using this command constantly, toxy")
-            elif (ctx.message.author.id == config.GOOZ_ID):
-                await ctx.message.author.add_roles(config.MUTE_ID)
-                await ctx.reply("Stop using this command constantly, gooz")
-                await asyncio.sleep(20)
-                await ctx.message.author.remove_roles(config.MUTE_ID)
-            else:
-                timestamp = ctx.message.author.joined_at.strftime('%b-%d-%Y')
-                await ctx.reply(f"You have joined the server on {timestamp}")
-
-    # Anser to command !me
-    @commands.command(name="me", brief=ME_BRIEF)
+    # /me Command
     @commands.cooldown(1, 86400, commands.BucketType.member)
-    @commands.guild_only()
-    async def me(self, ctx):
+    @cog_ext.cog_slash(
+        name = 'me',
+        description = ME_BRIEF,
+        guild_ids = [config.GUILD]
+    )
+    async def me(self, ctx: SlashContext):
         member = ctx.message.author
 
         embed = discord.Embed(title=f'Information on {member.name}#{member.discriminator}', colour = member.colour)
@@ -258,7 +183,7 @@ class Users(commands.Cog):
         embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
 
-        await ctx.reply(embed=embed)
+        await ctx.send(embed=embed)
 
 def setup(bot):
-    bot.add_cog(Users(bot))
+    bot.add_cog(UsersSlash(bot))
