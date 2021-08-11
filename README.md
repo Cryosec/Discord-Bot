@@ -8,9 +8,11 @@ The code is mostly specific to the structure and use-case in said server, but ca
 ## Requirements
 The bot requires the following python requirements to run correctly:
 
-* Python 3.8.6
+* Python 3.9.6
 * discord
 * DiscordUtils
+* discord-py-slash-commands
+* cogwatch
 * python-dotenv
 * pytz
 * asyncio
@@ -49,6 +51,9 @@ The bot uses a `config.py` file with the necessary global variables. By default 
     * `ORANGE` set to `0xf39c12`
     * `PURPLE` set to `0x8e44ad`
 * `BLACKLIST` set to a list of strings, each being a word to censor.
+* `SCAMLIS` set a list of strings to search for and filter from possible scam URLs
+* `SCAM` empty list that will support the execution of scam messages filtering
+* There are extra strings setup with information on the commands (the usual `brief=` and `help=` assignments) and some longer informational strings sepecific to the Community Server.
 
 There are three other variables used for commands meant as inside jokes between some community members, these are not part of the official scope of the bot. These variables are as follow:
 
@@ -58,29 +63,31 @@ There are three other variables used for commands meant as inside jokes between 
 
 ## Deployment
 
-I run this bot inside a Docker container, on a Raspberry Pi 4 connected through ethernet. The container used by the bot is based on another container built to expedite container creation after updates to either the code base or dependencies. This base container is generated through the following Dockerfile script:
+I run this bot inside a Docker container, on ~~a Raspberry Pi 4 connected through ethernet~~ (bot has been moved) an unRAID server. The container used by the bot is based on another container built to expedite container creation after updates to either the code base or dependencies. This base container is generated through the following Dockerfile script:
 
 ```Dockerfile
-FROM python:3.8.6-buster
+FROM python:3.9.6-buster
 
 WORKDIR /app
 
 RUN python -m pip install discord
 RUN python -m pip install DiscordUtils
+RUN python -m pip install discord-py-slash-commands
+RUN python -m pip install cogwatch
 RUN python -m pip install python-dotenv
 RUN python -m pip install pytz
 RUN python -m pip install asyncio
 ```
  and the command in the same directory as the above Dockerfile:
 
- > docker build -t python-discord:1.0 .
+ > docker build -t python-discord:2.1 .
 
 This image is available on [Docker Hub](https://hub.docker.com/r/cryosec/python-discord), for linux/arm environments.
 
  The bot container is then generated through another Dockerfile script:
 
  ```Dockerfile
- FROM python-discord:1.0
+ FROM python-discord:2.1
 
 COPY ./ /app/
 
@@ -89,5 +96,5 @@ CMD ["python", "-u", "franky.py"]
 
 and built with the command, in the same directory as the above Dockerfile:
 
-> docker build -t discord-bot:2.3.2 .
+> docker build -t discord-bot:2.6.1 .
 

@@ -8,6 +8,7 @@
 /read_dbs.py
 /todo
 /warnings.db
+/cogs/__pycache__
 timed_events.db
 lord-frnaklin-bot.xml
 launch.sh

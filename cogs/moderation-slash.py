@@ -11,30 +11,11 @@ from datetime import datetime, timedelta
 import random, typing
 import re, asyncio
 import DiscordUtils
-import moderation
-
-# BRIEF descriptors of commands
-BRIEF_MUTE = 'Give "Muted" role to specified user'
-BRIEF_UNMUTE = 'Remove "Muted" role from specified user'
-BRIEF_WARN = 'Issue a warning to specified user'
-BRIEF_UNWARN = 'Remove last warning from specified user'
-BRIEF_WARNINGS = 'Show a paginator with all warnings'
-BRIEF_CLEAR = 'Remove all warnings from specified user'
-BRIEF_STATUS = 'View status report on specified user'
-BRIEF_TIMERS = 'View all current timers for bans and mutes'
-BRIEF_DELETE = 'Delete last n messages from current chat'
-BRIEF_KICK = 'Kick specified user from the server'
-BRIEF_BAN = 'Ban specified user from the server'
-BRIEF_TEMPBAN = 'Temporarly ban user for set time'
-BRIEF_JAC = 'Get information on a user JAC log'
-BRIEF_HELP = 'Get a list of available commands'
+import cogs.moderation as mod
 
 class ModerationSlash(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-    
-
-    
 
     # Check if command from Moderator
     async def cog_check(self, ctx):
@@ -49,7 +30,7 @@ class ModerationSlash(commands.Cog):
 
     # /mute Command
     @cog_ext.cog_slash(name="mute", 
-                description = BRIEF_MUTE, 
+                description = config.BRIEF_MUTE, 
                 default_permission = False,
                 options = [
                     create_option(
@@ -75,8 +56,6 @@ class ModerationSlash(commands.Cog):
     async def mute(self, ctx: SlashContext, member: typing.Optional[discord.Member] = None, *, duration: str = 'a'):
         channel = ctx.guild.get_channel(config.LOG_CHAN)
         role = ctx.guild.get_role(config.MUTE_ID)
-
-        #franky.log.info(f"Muting {member}.")
 
         if 'a' in duration:
 
@@ -166,8 +145,6 @@ class ModerationSlash(commands.Cog):
             await asyncio.sleep(int(delta.total_seconds()))
             await member.remove_roles(role)
 
-            #franky.log.info("Muting removed.")
-
             t = shelve.open(config.TIMED)
 
             if str(member.id) in t:
@@ -186,7 +163,7 @@ class ModerationSlash(commands.Cog):
     # /unmute Command
     @cog_ext.cog_slash(
         name="unmute",     
-        description = BRIEF_UNMUTE, 
+        description = config.BRIEF_UNMUTE, 
         default_permission = False,
         options = [
             create_option(
@@ -216,7 +193,7 @@ class ModerationSlash(commands.Cog):
     # /ban Command
     @cog_ext.cog_slash(
         name = 'ban',
-        description = BRIEF_BAN,
+        description = config.BRIEF_BAN,
         default_permission = False,
         options = [
             create_option(
@@ -288,7 +265,7 @@ class ModerationSlash(commands.Cog):
     # /tempban Command
     @cog_ext.cog_slash(
         name = 'tempban',
-        description = BRIEF_TEMPBAN,
+        description = config.BRIEF_TEMPBAN,
         default_permission = False,
         options = [
             create_option(
@@ -412,7 +389,7 @@ class ModerationSlash(commands.Cog):
     # /kick Command
     @cog_ext.cog_slash(
         name = 'kick',
-        description = BRIEF_KICK,
+        description = config.BRIEF_KICK,
         default_permission = False,
         options = [
             create_option(
@@ -481,7 +458,7 @@ class ModerationSlash(commands.Cog):
     # /status Command
     @cog_ext.cog_slash(
         name = 'status',
-        description = BRIEF_STATUS,
+        description = config.BRIEF_STATUS,
         default_permission = False,
         options = [
             create_option(
@@ -582,7 +559,7 @@ class ModerationSlash(commands.Cog):
     # /warn Command
     @cog_ext.cog_slash(
         name = 'warn',
-        description = BRIEF_WARN,
+        description = config.BRIEF_WARN,
         default_permission = False,
         options = [
             create_option(
@@ -639,7 +616,7 @@ class ModerationSlash(commands.Cog):
     # /unwarn command
     @cog_ext.cog_slash(
         name="unwarn",     
-        description = BRIEF_UNWARN, 
+        description = config.BRIEF_UNWARN, 
         default_permission = False,
         options = [
             create_option(
@@ -666,10 +643,10 @@ class ModerationSlash(commands.Cog):
                 del tmp['reasons'][-1]
                 s[str(member.id)] = tmp
                 s.close()
-                await moderation.Moderation.status(self, ctx, member)
+                await mod.Moderation.status(self, ctx, member)
             else:
                 s.close()
-                await moderation.Moderation.status(self, ctx, member)
+                await mod.Moderation.status(self, ctx, member)
 
             await ctx.send(embed = discord.Embed(title = f'Last warning removed from user {member}', colour = config.GREEN))
         else:
@@ -678,7 +655,7 @@ class ModerationSlash(commands.Cog):
     # /cwarn Command
     @cog_ext.cog_slash(
         name="cwarn",     
-        description = BRIEF_CLEAR, 
+        description = config.BRIEF_CLEAR, 
         default_permission = False,
         options = [
             create_option(
@@ -702,10 +679,10 @@ class ModerationSlash(commands.Cog):
             if str(member.id) in s:
                 del s[str(member.id)]
                 s.close()
-                await moderation.Moderation.status(self, ctx, member.id)
+                await mod.Moderation.status(self, ctx, member.id)
             else:
                 s.close()
-                await moderation.Moderation.status(self, ctx, member.id)
+                await mod.Moderation.status(self, ctx, member.id)
             await ctx.send(embed = discord.Embed(title = f'Warnings cleared for user {member}', colour = config.GREEN))
         else:
             await ctx.reply(emved = discord.Embed(title='User is not part of the server', colour = config.YELLOW))
@@ -713,7 +690,7 @@ class ModerationSlash(commands.Cog):
     # /jac Command
     @cog_ext.cog_slash(
         name="jac",     
-        description = BRIEF_JAC, 
+        description = config.BRIEF_JAC, 
         default_permission = False,
         options = [
             create_option(
@@ -792,7 +769,7 @@ class ModerationSlash(commands.Cog):
     # /timers Command
     @cog_ext.cog_slash(
         name = 'timers',
-        description = BRIEF_TIMERS,
+        description = config.BRIEF_TIMERS,
         default_permission = False,
         guild_ids = [config.GUILD]
     )
@@ -835,7 +812,7 @@ class ModerationSlash(commands.Cog):
     # /delete Command
     @cog_ext.cog_slash(
         name="delete",     
-        description = BRIEF_DELETE, 
+        description = config.BRIEF_DELETE, 
         default_permission = False,
         options = [
             create_option(

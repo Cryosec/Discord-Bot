@@ -10,74 +10,7 @@ import random, typing
 import re, asyncio
 import DiscordUtils
 
-# BRIEF descriptors of commands
-BRIEF_MUTE = 'Give "Muted" role to specified user'
-BRIEF_UNMUTE = 'Remove "Muted" role from specified user'
-BRIEF_WARN = 'Issue a warning to specified user'
-BRIEF_UNWARN = 'Remove last warning from specified user'
-BRIEF_WARNINGS = 'Show a paginator with all warnings'
-BRIEF_CLEAR = 'Remove all warnings from specified user'
-BRIEF_STATUS = 'View status report on specified user'
-BRIEF_TIMERS = 'View all current timers for bans and mutes'
-BRIEF_DELETE = 'Delete last n messages from current chat'
-BRIEF_KICK = 'Kick specified user from the server'
-BRIEF_BAN = 'Ban specified user from the server'
-BRIEF_TEMPBAN = 'Temporarly ban user for set time'
-BRIEF_JAC = 'Get information on a user JAC log'
 
-# LONG descriptions of commands
-HELP_MUTE = '''**Usage:** 
-`!mute @{user}` or `!mute <name>#<id>` to give the specified user the "Muted" role indefinitely.
-
-**Optional:**
-Add a timer at the end of the command to set an automatic unmute timer.
-
-**Syntax:** 
-number + specifier, where specifier is: 
-`w` (weeks) 
-`d` (days) 
-`h` (hours)
-`m` (minutes)
-`s` (seconds)
-
-**Example:** 
-`!mute @Cryosec 1w2d7h` to mute user for 1 week, 2 days and 7 hours'''
-
-HELP_UNMUTE = 'Usage: `!unmute @{user}` or `!unmute <name>#<id>` to remove the "Muted" role from specified user'
-HELP_WARN = 'Usage: `!warn @{user} {reason}` or `!warn <name>#<id>` to catalog a warning of the specified user with reason'
-HELP_UNWARN = 'Usage: `!unwarn @{user}` or `!unwarn <name>#<id>` to remove last warning issued to specified user'
-HELP_WARNINGS = '''Usage : `!warns` to show a paginator with all warnings currently present in the database. 
-Use the following reactions for navigation:
-
-⏪  goes to the previous page
-🔐  locks the paginator to the current page
-❌  deletes the paginator message
-⏩  goes to the next page
-
-'''
-HELP_CLEAR = 'Usage: `!cwarn @{user}` or `!cwarn <name>#<id>` to remove all warnings from specified user'
-HELP_STATUS = 'Usage: `!status @{user}` or `!status <name>#<id>` to view a status report on specified user.\nReport includes list of reasons, number of warnings, kicks and bans'
-HELP_DELETE = 'Usage: `!delete {n}` to delete the last n amount of messages from current chat.\nThis deletes also your command, so no need to count it too.'
-HELP_KICK = 'Usage: `!kick @{user}` or `!kick <name>#<id>` to kick specified user from the server'
-HELP_BAN = 'Usage: `!ban @{user}` or `!ban <name>#<id>` to ban specified user from the server'
-HELP_TEMPBAN = '''**Usage:**
-`!tempban @{user} <timer>` or `!tempban <name>#<id> <timer>` to temporarly ban specified user.
-
-**Syntax:**
-number + specifier, where specifier is: 
-`w` (weeks) 
-`d` (days) 
-`h` (hours)
-`m` (minutes)
-`s` (seconds)
-
-**Example:** 
-`!tempban @Cryosec 1w2d7h` to ban user for 1 week, 2 days and 7 hours
-'''
-HELP_JAC = '''**Usage:**
-`!jac {user}` to get information on the link posted, when it was posted and how much time is left until they can post again.
-If said timer is negative, contact @Cryosec because it shouldn't happen.
-'''
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -94,7 +27,7 @@ class Moderation(commands.Cog):
             return False
 
     # !mute = mute someone with muting role
-    @commands.command(name='mute', brief=BRIEF_MUTE, help=HELP_MUTE)
+    @commands.command(name='mute', brief=config.BRIEF_MUTE, help=config.HELP_MUTE)
     @commands.guild_only()
     async def mute(self, ctx, member: typing.Optional[discord.Member] = None, *, duration: str = 'a'):
 
@@ -202,14 +135,14 @@ class Moderation(commands.Cog):
             await channel.send(content=None, embed=embed)
             
     # !unmute = unmute, duh
-    @commands.command(name='unmute' , brief=BRIEF_UNMUTE, help=HELP_UNMUTE)
+    @commands.command(name='unmute' , brief=config.BRIEF_UNMUTE, help=config.HELP_UNMUTE)
     @commands.guild_only()
     async def unmute(self, ctx, member: typing.Optional[discord.Member] = None):
         role = ctx.guild.get_role(config.MUTE_ID)
         await member.remove_roles(role)
 
     # !warn = give a warning to member
-    @commands.command(name='warn', brief=BRIEF_WARN, help=HELP_WARN)
+    @commands.command(name='warn', brief=config.BRIEF_WARN, help=config.HELP_WARN)
     @commands.guild_only()
     async def warn(self, ctx, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
         logging.info(f"Warning {member}...")
@@ -241,7 +174,7 @@ class Moderation(commands.Cog):
             logging.error(f"Error while attempting to mute {member}")
 
     # !unwarn = removes last warning
-    @commands.command(name='unwarn', brief=BRIEF_UNWARN, help=HELP_UNWARN)
+    @commands.command(name='unwarn', brief=config.BRIEF_UNWARN, help=config.HELP_UNWARN)
     @commands.guild_only()
     async def unwarn(self, ctx, member: typing.Optional[discord.Member] = None):
 
@@ -268,7 +201,7 @@ class Moderation(commands.Cog):
         jac.close()
 
     # !cwarn = clear all warnings from user
-    @commands.command(name='cwarn', brief=BRIEF_CLEAR, help=HELP_CLEAR)
+    @commands.command(name='cwarn', brief=config.BRIEF_CLEAR, help=config.HELP_CLEAR)
     @commands.guild_only()
     async def cwarn(self, ctx, member: typing.Optional[discord.Member] = None):
         
@@ -286,7 +219,7 @@ class Moderation(commands.Cog):
 
     # !status = give status on a member.
     # This includes number of warnings, kicks and bans
-    @commands.command(name='status', brief=BRIEF_STATUS, help=HELP_STATUS)
+    @commands.command(name='status', brief=config.BRIEF_STATUS, help=config.HELP_STATUS)
     @commands.guild_only()
     async def status(self, ctx, user = None):
 
@@ -401,7 +334,7 @@ class Moderation(commands.Cog):
                 await ctx.reply(content=None, embed=embed)
 
     # !warns = paged list of warnings
-    @commands.command(name='warns', brief=BRIEF_WARNINGS, help=HELP_WARNINGS)
+    @commands.command(name='warns', brief=config.BRIEF_WARNINGS, help=config.HELP_WARNINGS)
     async def list_warnings(self, ctx):
         warns = shelve.open(config.WARNINGS)
         embeds= []
@@ -424,7 +357,7 @@ class Moderation(commands.Cog):
         await paginator.run(embeds)
 
     # !delete = delete n messages from chat
-    @commands.command(name='delete', brief=BRIEF_DELETE, help=HELP_DELETE)
+    @commands.command(name='delete', brief=config.BRIEF_DELETE, help=config.HELP_DELETE)
     @commands.guild_only()
     async def delete_messages(self, ctx, n: int):
 
@@ -481,7 +414,7 @@ class Moderation(commands.Cog):
             await channel.send(content=None, embed=embed)
 
     # !tempban = temporarily ban user
-    @commands.command(name='tempban', brief=BRIEF_TEMPBAN, help=HELP_TEMPBAN)
+    @commands.command(name='tempban', brief=config.BRIEF_TEMPBAN, help=config.HELP_TEMPBAN)
     @commands.guild_only()
     async def tempban_user(self, ctx, member: typing.Optional[discord.User], duration: str = None, *, reason = 'Unspecified'):
         role = ctx.guild.get_role(config.MOD_ID)

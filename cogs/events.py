@@ -7,6 +7,10 @@ import pytz, shelve
 import config
 import re
 import asyncio
+from discord_slash import SlashCommand, cog_ext, SlashContext, ComponentContext
+from discord_slash.utils.manage_commands import create_option, create_permission, create_choice
+from discord_slash.utils.manage_components import create_button, create_actionrow, wait_for_component
+from discord_slash.model import ButtonStyle
 
 
 class Events(commands.Cog):
@@ -158,56 +162,48 @@ class Events(commands.Cog):
                 if ru_link.group("url") not in config.SCAM:
                     config.SCAM.append(ru_link.group("url"))
 
-                    # TODO: create embed and add reactions for a mod to ban
-                    
+                    buttons = [
+                                create_button(
+                                    style = ButtonStyle.green,
+                                    label = "Ban",
+                                    custom_id = "confirm"
+                                ),
+                                create_button(
+                                    style = ButtonStyle.red,
+                                    label = "Cancel",
+                                    custom_id = "cancel"
+                                )
+                            ]
+                    action_row = create_actionrow(*buttons)
+
                     embed = discord.Embed(title = "Possible scam - manual review",
                                         description = "Review the blocked message ",
                                         colour = config.RED)
                     embed.add_field(name = 'Suspicious message', value = message.content, inline=False)                    
                     embed.add_field(name = 'Suspicious link', value = ru_link.group("url"))
                     embed.add_field(name = 'Author', value = message.author.mention)
+                    embed.add_field(name = 'Join date', value = message.author.joined_at.strftime('%b-%d-%Y %H:%M:%S'))
+                    embed.add_field(name = 'Creation date', value = message.author.created_at.strftime('%b-%d-%Y %H:%M:%S'))
                     embed.set_footer(text=config.FOOTER)
 
                     channel = message.guild.get_channel(config.LOG_CHAN)
-                    manual_check = await channel.send(embed=embed)
 
-                    for emoji in self.reacts:
-                        try:
-                            await manual_check.add_reaction(emoji)
-                        except:
-                            pass
+                    await channel.send(embed=embed, components = [action_row])
+                    button_ctx: ComponentContext = await wait_for_component(self.bot, components=action_row)
 
-                    # This might not work with multiple messages blocked
-                    def check(reaction, user):
-                        return reaction.emoji in self.reacts and reaction.message.id == manual_check.id and user.id != self.bot.user.id
-
-                    reaction, react_user = await self.bot.wait_for('reaction_add', check = check)
-
-                    # if user reacts with ✅
-                    if str(reaction.emoji) == self.reacts[1]:
-                        
-                        for react in manual_check.reactions:
-                            
-                            if react.message.author.id == self.bot.user.id:
-                                try:
-                                    await manual_check.remove_reaction(str(reaction.emoji), react.message.author)
-                                except:
-                                    pass
-                        # ban if not mod
+                    # If mod confirms ban
+                    if button_ctx.custom_id.equals('confirm'):
                         modrole = message.guild.get_role(config.MOD_ID) 
                         if modrole not in message.author.roles:
-                            await message.author.ban(reason = f'CS:GO spam confirmed by {react_user.mention}', delete_message_days=0)
+                            await message.author.ban(reason = f'Spam message confirmed by {button_ctx.author.mention}', delete_message_days=0)
                             config.SCAM.remove(ru_link.group("url"))
-                    
-                    # if user reacts with ❌
-                    if str(reaction.emoji) == self.reacts[0]:
-                        for react in manual_check.reactions:
-                            if react.message.author.id == self.bot.user.id:
-                                try:
-                                    await manual_check.remove_reaction(str(reaction.emoji), react.message.author)
-                                except:
-                                    pass
+
+                    # If mod cancels
+                    elif button_ctx.custom_id.equals('cancel'):
+                        button_ctx.edit_origin(embed=embed, components=None)
                         config.SCAM.remove(ru_link.group("url"))
+                    
+
 
         if 'discord.gg/' in message.content:
             # Whitelist drew's link
