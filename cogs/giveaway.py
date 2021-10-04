@@ -1,3 +1,4 @@
+# pylint: disable=F0401
 import discord
 from discord.ext import commands
 import config

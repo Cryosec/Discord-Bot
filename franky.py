@@ -6,9 +6,11 @@ from discord.ext import commands, tasks
 from discord_slash import SlashCommand
 from dotenv import load_dotenv
 import asyncio
-import config, shelve, pytz
+import config
+import shelve, pytz
 from datetime import datetime, timedelta
 from cogwatch import Watcher
+import random
 
 
 # System setup
@@ -21,7 +23,7 @@ log.addHandler(handler)
 # cogwatch logger
 watch_log = logging.getLogger('cogwatch')
 watch_log.setLevel(logging.INFO)
-watch_handler = logging.StreamHandler(sys.stdout)
+watch_handler = logging.FileHandler(filename='cogwatch.log', encoding='utf-8', mode='w')
 watch_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
 watch_log.addHandler(watch_handler)
 
@@ -46,8 +48,10 @@ timelines = []
 
 # Here starts the logic
 if __name__ == '__main__':
+    """Load the extensions from the list and launch a warning on failure."""
     for extension in init_extensions:
         try:
+            log.info(f'Loading extension {extension}')
             bot.load_extension(extension)
         except Exception as e:
             print(f'can\'t load extension {extension}')
@@ -57,7 +61,7 @@ if __name__ == '__main__':
 
 @tasks.loop(minutes=60)
 async def check_timers():
-    
+    """Task that runs every 60 minutes, checking all active timers for any that finished."""
     # Setup variables
     guild = await bot.fetch_guild(config.GUILD)
     channel = bot.get_channel(config.LOG_CHAN)
@@ -71,9 +75,9 @@ async def check_timers():
         for elem in jac:
             # setup current time
             tz_TX = pytz.timezone('US/central')
-            now_string = datetime.now(tz_TX).strftime('%b-%d-%Y')
-            now = datetime.strptime(now_string, '%b-%d-%Y')
-            time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y')
+            now_string = datetime.now(tz_TX).strftime('%b-%d-%Y %H:%M:%S')
+            now = datetime.strptime(now_string, '%b-%d-%Y %H:%M:%S')
+            time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y %H:%M%:S')
             delta = timedelta(days=14)
             newtime = time + delta
 
@@ -94,14 +98,14 @@ async def check_timers():
                 tz_TX = pytz.timezone('US/Central')
                 now_string = datetime.now(tz_TX).strftime('%b-%d-%Y %H:%M:%S')
                 now = datetime.strptime(now_string, '%b-%d-%Y %H:%M:%S')
-                
+                # If timer ran out, unmute user
                 if time < now:
                     print(f'\nUser {mem} needs to be unmuted.')
 
                     try:
                         member = await guild.fetch_member(int(mem))
                         role = guild.get_role(config.MUTE_ID)
-
+                        # Create embed to log unmuting
                         embed = discord.Embed(title = 'Timed mute complete',
                                     description = f'User {member} has been unmuted automatically.',
                                     colour=config.YELLOW)
@@ -123,11 +127,11 @@ async def check_timers():
                 tz_TX = pytz.timezone('US/Central')
                 now_string = datetime.now(tz_TX).strftime('%b-%d-%Y %H:%M:%S')
                 now = datetime.strptime(now_string, '%b-%d-%Y %H:%M:%S')
-
+                # If timer ran out, unban user
                 if time < now:
 
                     user = await bot.fetch_user(int(mem))
-
+                    # Create embed to log unbanning
                     embed = discord.Embed(title = 'Timed ban complete',
                                 description = f'User {user.name}#{user.discriminator} has been unbanned automatically.',
                                 colour=config.YELLOW)
@@ -139,7 +143,7 @@ async def check_timers():
                     t[mem]['ban'] = False
                     t[mem]['endBan'] = None
                     t.sync()
-                
+                # Re-add the timer to the list -- this could cause duplicate timers
                 elif time > now:
                     print(f'\nUser {mem} is tempbanned. Adding to wait...')
                     t.close()
@@ -149,7 +153,7 @@ async def check_timers():
                     t[mem]['ban'] = False
                     t[mem]['endBan'] = None
                     t.sync()
-
+            # If there are no more timers for a user, there's no need to keep track of them
             if not t[mem]['mute'] and not t[mem]['ban']:
                 print(f'\nUser {mem} has no more timers. Removing from db...')
                 del t[mem]
@@ -157,13 +161,40 @@ async def check_timers():
 
         
         print('Done! Waiting 60 minutes for next check...')
+        print('---------')
     except:
         print('Error while checking timers, waiting next loop...')
+        print('---------')
+
+@tasks.loop(minutes=76)
+async def random_msg():
+
+    # Setup variables
+    guild = await bot.fetch_guild(config.GUILD)
+    channel = bot.get_channel(config.GENERAL_CHAN)
+    print('Posting random message...')
+    await post_message(guild = guild, channel = channel)
+
+    interval = random.randrange(60, 180)
+    random_msg.change_interval(minutes=interval)
+    print(f'New random message interval set to {interval} minutes')
+    
+
+async def post_message(guild, channel):
+    
+    msg = random.choice(config.WEIRD_MESSAGES)
+    if msg != config.previous_msg:
+        await channel.send(msg)
+        config.previous_msg = msg
+    else:
+        await post_message(guild = guild, channel = channel)
+
+
 
 # When bot is loaded up and ready
 @bot.event
 async def on_ready():
-
+    """Function called when bot is ready to operate, starts cogwatcher and tasks."""
     watcher = Watcher(bot, path='cogs')
     await watcher.start()
 
@@ -176,10 +207,14 @@ async def on_ready():
 
     if not check_timers.is_running():
         check_timers.start()
+    
+    #if not random_msg.is_running():
+    #    random_msg.start()
 
 # Manage errors globally
 @bot.event
 async def on_command_error(ctx, error):
+    """Log the error output by a command."""
     log.error(error)
 
 #check_timers.start()

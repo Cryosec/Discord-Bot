@@ -34,7 +34,8 @@ The bot uses a `config.py` file with the necessary global variables. By default 
     * `JAC` set to a filename for the list of users who posted in the join-a-clan channel.
 * `GUILD` set with the integer ID of the Guild the bot will run in.
 * Roles:
-    * `MOD_ID` set to the integer ID of the moderation role.
+    * `MOD_ID` set to the integer ID of the moderator role.
+    * `ADMIN_ID` set to the integer ID of the administrator role. 
     * `BOT_ID` set to the integer ID of the bot.
     * `MUTE_ID` set to the integer ID of the *muted* role.
 * Channels:
@@ -51,8 +52,10 @@ The bot uses a `config.py` file with the necessary global variables. By default 
     * `ORANGE` set to `0xf39c12`
     * `PURPLE` set to `0x8e44ad`
 * `BLACKLIST` set to a list of strings, each being a word to censor.
-* `SCAMLIS` set a list of strings to search for and filter from possible scam URLs
+* `SCAMURLS` set to a list of strings to search for and filter from possible scam URLs
+* `SCAMTEXT` set to a list of strings to search for and filter from possible scam messages
 * `SCAM` empty list that will support the execution of scam messages filtering
+* `INVITE_WHITELIST` set to a list of discord invite URLs that will not be filtered.
 * There are extra strings setup with information on the commands (the usual `brief=` and `help=` assignments) and some longer informational strings sepecific to the Community Server.
 
 There are three other variables used for commands meant as inside jokes between some community members, these are not part of the official scope of the bot. These variables are as follow:
@@ -72,22 +75,24 @@ WORKDIR /app
 
 RUN python -m pip install discord
 RUN python -m pip install DiscordUtils
-RUN python -m pip install discord-py-slash-commands
+RUN python -m pip install discord-interactions
 RUN python -m pip install cogwatch
 RUN python -m pip install python-dotenv
 RUN python -m pip install pytz
 RUN python -m pip install asyncio
 ```
- and the command in the same directory as the above Dockerfile:
+(Note: as of v3.0.2, `discord-py-slash-commands` was renamed to `discord-interactions`)
 
- > docker build -t python-discord:2.1 .
+and the command in the same directory as the above Dockerfile:
+
+> docker build -t python-discord:latest .
 
 This image is available on [Docker Hub](https://hub.docker.com/r/cryosec/python-discord), for linux/arm environments.
 
- The bot container is then generated through another Dockerfile script:
+The bot container is then generated through another Dockerfile script:
 
- ```Dockerfile
- FROM python-discord:2.1
+```Dockerfile
+FROM python-discord:latest
 
 COPY ./ /app/
 
@@ -96,5 +101,5 @@ CMD ["python", "-u", "franky.py"]
 
 and built with the command, in the same directory as the above Dockerfile:
 
-> docker build -t discord-bot:2.6.1 .
+> docker build -t discord-bot:latest .
 

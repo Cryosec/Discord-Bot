@@ -1,7 +1,6 @@
 # pylint: disable=F0401
 import discord
 from discord_slash import SlashCommand
-import logging
 from discord.ext import commands
 import config
 import shelve, pytz
@@ -9,6 +8,7 @@ from datetime import datetime, timedelta
 import random, typing
 import re, asyncio
 import DiscordUtils
+import importlib
 
 
 class Moderation(commands.Cog):
@@ -26,6 +26,10 @@ class Moderation(commands.Cog):
         else:
             return False
 
+    @commands.command(name='ping')
+    async def ping(self, ctx):
+        await ctx.reply('Pong! {0} ms'.format(round(self.bot.latency * 1000, 1)))
+
     # !mute = mute someone with muting role
     @commands.command(name='mute', brief=config.BRIEF_MUTE, help=config.HELP_MUTE)
     @commands.guild_only()
@@ -33,8 +37,6 @@ class Moderation(commands.Cog):
 
         channel = ctx.guild.get_channel(config.LOG_CHAN)
         role = ctx.guild.get_role(config.MUTE_ID)
-
-        logging.info(f"Muting {member}.")
 
         if 'a' in duration:
 
@@ -114,11 +116,8 @@ class Moderation(commands.Cog):
             t.close()
             await channel.send(content=None, embed=embed)
 
-            logging.info(f"Mute timer started: {int(delta.total_seconds())}s")
             await asyncio.sleep(int(delta.total_seconds()))
             await member.remove_roles(role)
-
-            logging.info("Muting removed.")
 
             t = shelve.open(config.TIMED)
 
@@ -145,7 +144,6 @@ class Moderation(commands.Cog):
     @commands.command(name='warn', brief=config.BRIEF_WARN, help=config.HELP_WARN)
     @commands.guild_only()
     async def warn(self, ctx, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
-        logging.info(f"Warning {member}...")
         try:
             s = shelve.open(config.WARNINGS)
             if str(member.id) in s:
@@ -169,9 +167,8 @@ class Moderation(commands.Cog):
             s.close()
 
             await channel.send(content=None, embed=embed)
-            logging.info("Done.")
         except:
-            logging.error(f"Error while attempting to mute {member}")
+            pass
 
     # !unwarn = removes last warning
     @commands.command(name='unwarn', brief=config.BRIEF_UNWARN, help=config.HELP_UNWARN)
@@ -409,7 +406,6 @@ class Moderation(commands.Cog):
             s.close()
 
             await ctx.guild.kick(member, reason=reason)
-            logging.info(f"User {member} was kicked.")
             channel = ctx.guild.get_channel(config.LOG_CHAN)
             await channel.send(content=None, embed=embed)
 
@@ -546,7 +542,6 @@ class Moderation(commands.Cog):
             s.close()
 
             await ctx.guild.ban(member, reason=reason)
-            logging.info(f"User {member} was banned.")
             channel = ctx.guild.get_channel(config.LOG_CHAN)
             await channel.send(content=None, embed=embed)
 
@@ -597,11 +592,10 @@ class Moderation(commands.Cog):
         await ctx.channel.send(answer)
 
     # Another inside joke with a different user
-    @commands.command(nname="toxy")
+    @commands.command(name="toxy")
     @commands.guild_only()
     async def toxy(self, ctx):
 
-        logging.info("Toxy initiated, waiting 30s...")
         await ctx.message.channel.purge(limit = 1)
         await ctx.send("Shut the fuck up, toxy")
         toxy = ctx.guild.get_member(config.TOXY_ID)
@@ -610,7 +604,6 @@ class Moderation(commands.Cog):
         await toxy.add_roles(muted)
         await asyncio.sleep(30)
         await toxy.remove_roles(muted)
-        logging.info("Toxy terminated.")
         
     # Floppa Friday!
     @commands.command(name="floppa")
@@ -619,19 +612,23 @@ class Moderation(commands.Cog):
         #await ctx.message.channel.purge(limit=1)
         await ctx.send("I am the one who flops")
         muted = ctx.guild.get_role(config.MUTE_ID)
-        logging.info("Floppa initiated, waiting 30s...")
         await member.add_roles(muted)
         await asyncio.sleep(30)
         await member.remove_roles(muted)
-        logging.info("Floppa terminated.")
-     # Error handling
+    
+    # Error handling
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):
             await ctx.reply('Missing arguments, type `!help <command>` for info on your command.')
         elif isinstance(error, commands.BadArgument):
             await ctx.reply('I could not find that user. Try again.')
-        
+
+    # Reload config.py
+    @commands.command(name='reload')
+    async def reload(self, ctx):
+        importlib.reload(config)
+        await ctx.reply('Configuration file has been reloaded.')
 
 
 def setup(bot):

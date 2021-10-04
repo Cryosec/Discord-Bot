@@ -3,7 +3,6 @@ import discord
 from discord_slash import SlashCommand, cog_ext, SlashContext
 from discord_slash.utils.manage_commands import create_option, create_permission, create_choice
 from discord_slash.model import SlashCommandPermissionType
-import logging
 from discord.ext import commands
 import config
 import shelve, pytz
@@ -12,21 +11,13 @@ import random, typing
 import re, asyncio
 import DiscordUtils
 import cogs.moderation as mod
+import logging
 
 class ModerationSlash(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # Check if command from Moderator
-    async def cog_check(self, ctx):
-        mod = ctx.guild.get_role(config.MOD_ID)
-        admin = ctx.guild.get_role(config.ADMIN_ID)
-        if mod in ctx.author.roles:
-            return True
-        elif admin in ctx.author.roles:
-            return True
-        else:
-            return False
+    #logging.basicConfig(format='%(asctime)s:%(levelname)s:%(name)s: %(message)s', level=logging.INFO)
 
     # /mute Command
     @cog_ext.cog_slash(name="mute", 
@@ -58,9 +49,9 @@ class ModerationSlash(commands.Cog):
         role = ctx.guild.get_role(config.MUTE_ID)
 
         if 'a' in duration:
-
+            
             await member.add_roles(role)
-
+            print(f'Muting {member} indefinitely')
             await ctx.send(embed = discord.Embed(title = f"User {member} has been muted indefinitely",
                                                 colour = config.YELLOW))
             
@@ -82,7 +73,7 @@ class ModerationSlash(commands.Cog):
             mods = re.findall(r'([0-9]+?[wdhms])+?', duration)
 
             if not mods:
-                await ctx.reply('**ERROR**: `duration` format is incorrect. Use `!help mute` for more information on the correct format.')
+                await ctx.reply('**ERROR**: `duration` format is incorrect.')
                 return
 
             dur = ''
@@ -126,6 +117,8 @@ class ModerationSlash(commands.Cog):
             
             await member.add_roles(role)
             
+            print(f'Timer started - User {member} has been muted for {dur}')
+
             await ctx.send(embed = discord.Embed(title = f"User {member} has been muted for {dur}",
                                                 colour = config.YELLOW))
 
@@ -141,10 +134,9 @@ class ModerationSlash(commands.Cog):
             t.close()
             await channel.send(content=None, embed=embed)
 
-            logging.info(f"Mute timer started: {int(delta.total_seconds())}s")
             await asyncio.sleep(int(delta.total_seconds()))
             await member.remove_roles(role)
-
+            print(f'Timer ended - User {member} has been unmuted')
             t = shelve.open(config.TIMED)
 
             if str(member.id) in t:
@@ -185,7 +177,7 @@ class ModerationSlash(commands.Cog):
         if member is not None:
             role = ctx.guild.get_role(config.MUTE_ID)
             await member.remove_roles(role)
-
+            print(f'User {member} was unmuted')
             await ctx.send(embed = discord.Embed(title = f'User {member} was unmuted.',
                                                 colour = config.GREEN))
         
@@ -255,6 +247,7 @@ class ModerationSlash(commands.Cog):
             s.close()
 
             await ctx.guild.ban(member, reason=reason)
+            print(f'User {member} was banned')
             await ctx.send(embed = discord.Embed(title=f"User {member} was banned from the Server.", 
                                                 colour = config.RED))
             #franky.log.info(f"User {member} was banned.")
@@ -303,7 +296,7 @@ class ModerationSlash(commands.Cog):
             await ctx.send('You cannot ban a moderator through me.')
         else:
             if duration is None:
-                await ctx.send('**ERROR**: Command format is incorrect. Use `!help tempban` for more information on the command.')
+                await ctx.send('**ERROR**: Command format is incorrect.')
                 return
             else:
                 tz_TX = pytz.timezone('US/Central')
@@ -313,7 +306,7 @@ class ModerationSlash(commands.Cog):
                 mods = re.findall(r'([0-9]+?[wdhms])+?', duration)
 
                 if not mods:
-                    await ctx.send('**ERROR**: `duration` format is incorrect. Use `!help mute` for more information on the correct format.')
+                    await ctx.send('**ERROR**: `duration` format is incorrect.')
                     return
 
                 dur = ''
@@ -369,6 +362,8 @@ class ModerationSlash(commands.Cog):
 
                 await ctx.guild.ban(member, reason=reason, delete_message_days=0)
 
+                print(f'Timer started - User {member} has been temporarily banned for {dur}')
+
                 await ctx.send(embed = discord.Embed(title = f"User {member} has ben temporarily banned for {dur}",
                                                     colour = config.RED))
 
@@ -381,6 +376,9 @@ class ModerationSlash(commands.Cog):
 
                 await channel.send(content=None, embed=embed)
                 await ctx.guild.unban(member, reason='Temp ban concluded')
+
+                print(f'Timer ended - User {member} has been unbanned.')
+
                 del t[str(member.id)]
 
                 t.close()
@@ -447,10 +445,11 @@ class ModerationSlash(commands.Cog):
 
             await ctx.guild.kick(member, reason=reason)
 
+            print(f'User {member} has been kicked.')
+
             await ctx.send(embed = discord.Embed(title = f"User {member} was kicked from the server",
                                                 colour = config.RED))
 
-            #franky.log.info(f"User {member} was kicked.")
             channel = ctx.guild.get_channel(config.LOG_CHAN)
             await channel.send(content=None, embed=embed)
 
@@ -582,8 +581,8 @@ class ModerationSlash(commands.Cog):
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
         ])
-    async def warn(self, ctx, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
-        #franky.log.info(f"Warning {member}...")
+    async def warn(self, ctx: SlashContext, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
+        print(f"Warning {member}...")
         try:
             s = shelve.open(config.WARNINGS)
             if str(member.id) in s:
@@ -607,10 +606,13 @@ class ModerationSlash(commands.Cog):
             s.close()
 
             await channel.send(content=None, embed=embed)
-            #franky.log.info("Done.")
+            await ctx.send(embed = discord.Embed(
+                title = f'{member} has been warned'
+            ))
+            print("Done.")
         except:
             #franky.log.error(f"Error while attempting to mute {member}")
-            print("oof, warn command broke")
+            logging.warning("oof, warn command broke")
 
 
     # /unwarn command
@@ -649,6 +651,7 @@ class ModerationSlash(commands.Cog):
                 await mod.Moderation.status(self, ctx, member)
 
             await ctx.send(embed = discord.Embed(title = f'Last warning removed from user {member}', colour = config.GREEN))
+            print(f'Last warning for user {member} removed.')
         else:
             await ctx.send(embed = discord.Embed(title = 'User is not part of the server', colour = config.YELLOW))
 
@@ -684,6 +687,7 @@ class ModerationSlash(commands.Cog):
                 s.close()
                 await mod.Moderation.status(self, ctx, member.id)
             await ctx.send(embed = discord.Embed(title = f'Warnings cleared for user {member}', colour = config.GREEN))
+            print(f'Warnings for user {member} cleared.')
         else:
             await ctx.reply(emved = discord.Embed(title='User is not part of the server', colour = config.YELLOW))
 
@@ -728,7 +732,7 @@ class ModerationSlash(commands.Cog):
             embed.add_field(name = 'Time left', value = str(delta), inline=False)
             embed.set_footer(text=config.FOOTER)
 
-            await ctx.sned(content=None, embed=embed)
+            await ctx.send(content=None, embed=embed)
         else:
             await ctx.send('User is not in the database')
 
@@ -806,7 +810,7 @@ class ModerationSlash(commands.Cog):
                                         colour = config.GREEN)
                 embed.set_footer(text=config.FOOTER)
 
-                await ctx.send(content=None, embed=embed)
+                await ctx.send(embed=embed)
 
 
     # /delete Command
@@ -831,7 +835,7 @@ class ModerationSlash(commands.Cog):
         ])
     async def delete_messages(self, ctx, messages: int):
 
-        await ctx.message.channel.purge(limit= messages)
+        await ctx.channel.purge(limit= messages)
 
         channel = ctx.guild.get_channel(config.LOG_CHAN)
         
@@ -841,6 +845,52 @@ class ModerationSlash(commands.Cog):
         embed.set_footer(text=config.FOOTER)
         
         await channel.send(content=None, embed=embed)
+
+
+    # /slow Command
+    @cog_ext.cog_slash(
+        name = 'slow',
+        description = config.BRIEF_SLOW,
+        default_permission = False,
+        options = [
+            create_option(
+                name = 'channel',
+                description = 'Channel in which to set the slowmode',
+                option_type = 7,
+                required = True
+            ),
+            create_option(
+                name = 'seconds',
+                description = 'Number of seconds for the slowmode. 0 to remove',
+                option_type = 4,
+                required = True,
+            )
+        ],
+        guild_ids = [config.GUILD]
+    )
+    @cog_ext.permission(
+        guild_id = config.GUILD,
+        permissions = [
+            create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
+            create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
+        ]
+    )
+    async def slowmode(self, ctx: SlashContext, channel: discord.TextChannel, seconds: int):
+        try:
+            await channel.edit(slowmode_delay = seconds)
+            
+            if seconds == 0:
+                await ctx.send(embed = discord.Embed(
+                    title = f'Slowmode disabled for {channel}',
+                    colour = config.GREEN
+                ))
+            else:
+                await ctx.send(embed = discord.Embed(
+                    title = f'Slowmode for {channel} set to {seconds}',
+                    colour = config.YELLOW
+                ))
+        except:
+            print(f'Error setting slowmode for channel {channel}')
 
 def setup(bot):
     bot.add_cog(ModerationSlash(bot))

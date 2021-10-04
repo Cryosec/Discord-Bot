@@ -3,12 +3,14 @@
 /__pycache__
 /config.py
 /discord.log
+/cogwatch.log
 /jac_log.db.db
 /pretty_help
 /read_dbs.py
 /todo
 /warnings.db
 /cogs/__pycache__
+/base
 timed_events.db
 lord-frnaklin-bot.xml
 launch.sh

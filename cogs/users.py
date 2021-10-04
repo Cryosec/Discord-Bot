@@ -79,6 +79,7 @@ class Users(commands.Cog):
             await ctx.send(content=None, embed=embed)
 
     # Answer to command !joined
+    ### CHANGED WITH !me ###
     #@commands.command(name="joined", brief=JOINED_BRIEF)
     #@commands.cooldown(1, 60, commands.BucketType.member)
     #@commands.guild_only()
