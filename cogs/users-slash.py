@@ -1,15 +1,8 @@
 # pylint: disable=F0401
 import discord
 from discord.ext import commands
-from datetime import datetime
+from discord_slash import cog_ext, SlashContext
 import config
-import cogs.moderation as mod
-import cogs.giveaway as ga
-import pytz
-from discord_slash import SlashCommand, cog_ext, SlashContext
-from discord_slash.utils.manage_commands import create_option, create_permission, create_choice
-from discord_slash.model import SlashCommandPermissionType
-
 
 
 class UsersSlash(commands.Cog):
@@ -23,9 +16,10 @@ class UsersSlash(commands.Cog):
         description = config.ROLES_BRIEF,
         guild_ids = [config.GUILD]
     )
-    async def roles(self, ctx: SlashContext): 
+    async def roles(self, ctx: SlashContext):
 
-        embed = discord.Embed(title='Roles information', description=config.ROLES_INFO, colour=config.BLUE)
+        embed = discord.Embed(title='Roles information', 
+            description=config.ROLES_INFO, colour=config.BLUE)
         embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
         await ctx.send(content=None, embed=embed)
@@ -57,7 +51,8 @@ class UsersSlash(commands.Cog):
     )
     async def twitch(self, ctx: SlashContext):
 
-        embed = discord.Embed(title='Twitch information', url=config.TWTICH_URL, description=config.TWITCH_INFO, colour=config.PURPLE)
+        embed = discord.Embed(title='Twitch information', 
+            url=config.TWTICH_URL, description=config.TWITCH_INFO, colour=config.PURPLE)
         embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
         await ctx.send(content=None, embed=embed)
@@ -71,7 +66,8 @@ class UsersSlash(commands.Cog):
     )
     async def faq(self, ctx: SlashContext):
 
-        embed = discord.Embed(title='Fequently Asked Questions', description=config.FAQ, colour=config.BLUE)
+        embed = discord.Embed(title='Fequently Asked Questions', 
+            description=config.FAQ, colour=config.BLUE)
         embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
         await ctx.send(content=None, embed=embed)

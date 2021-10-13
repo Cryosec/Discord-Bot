@@ -1,13 +1,11 @@
-# pylint: disable=F0401
+# pylint: disable=F0401, W0702, W0703, W0105, W0613
 import discord
 from discord.ext import commands
 from datetime import datetime
 import pytz, shelve
 import config
 import re
-import asyncio
-from discord_slash import SlashCommand, cog_ext, SlashContext, ComponentContext
-from discord_slash.utils.manage_commands import create_option, create_permission, create_choice
+from discord_slash import ComponentContext
 from discord_slash.utils.manage_components import create_button, create_actionrow, wait_for_component
 from discord_slash.model import ButtonStyle
 
@@ -20,7 +18,7 @@ class Events(commands.Cog):
     @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
         """Manage logging of member ban.
-        
+
         Keyword arguments:
         self    -- self reference of the bot
         guild   -- Discord Guild ID
@@ -30,20 +28,20 @@ class Events(commands.Cog):
         now = datetime.now(tz_TX)
         dt = now.strftime("%b-%d-%Y %H:%M:%S")
 
-        entry = await guild.fetch_ban(user)
+        ban_entry = await guild.fetch_ban(user)
 
         s = shelve.open(config.WARNINGS)
         if str(user.id) in s:
             tmp = s[str(user.id)]
             tmp['bans'] = tmp.get('bans') + 1
-            tmp['reasons'].append(entry.reason)
+            tmp['reasons'].append(ban_entry.reason)
 
             s[str(user.id)] = tmp
         else:
-            if entry.reason is None:
+            if ban_entry.reason is None:
                 s[str(user.id)] = {'warnings': 0, 'kicks': 0, 'bans': 1, 'reasons': ['Ban: No reason specified'], 'tag': str(user)}
             else:
-                s[str(user.id)] = {'warnings': 0, 'kicks': 0, 'bans': 1, 'reasons': ['Ban:' + entry.reason], 'tag': str(user)}
+                s[str(user.id)] = {'warnings': 0, 'kicks': 0, 'bans': 1, 'reasons': ['Ban:' + ban_entry.reason], 'tag': str(user)}
             
         s.close()
 
@@ -52,7 +50,7 @@ class Events(commands.Cog):
         # Read audit logs
         # For whatever reason it does not assign the author of the ban and logs "None"
         async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
-            if entry.target == user:
+            if entry.target.id == user.id:
                 author = entry.user
 
         # Add 'unban' button under each ban embed
@@ -69,7 +67,7 @@ class Events(commands.Cog):
                               description = f'User {user.name}#{user.discriminator} was banned from the Server by {author}.',
                               colour=config.RED)
         embed.set_author(name = self.bot.user.name, icon_url = self.bot.user.avatar_url)
-        embed.add_field(name="Reason", value = entry.reason, inline = False)
+        embed.add_field(name="Reason", value = ban_entry.reason, inline = False)
         embed.add_field(name='Timestamp', value = dt)
         
         channel = guild.get_channel(config.LOG_CHAN)
@@ -97,7 +95,7 @@ class Events(commands.Cog):
                                     description = f'User {user.name}#{user.discriminator} was unbanned by {button_ctx.author.mention}',
                                     colour = config.GREEN)
             new_embed.set_author(name = self.bot.user.name, icon_url = self.bot.user.avatar_url)
-            new_embed.add_field(name = 'Ban reason', value = entry.reason, inline = False)
+            new_embed.add_field(name = 'Ban reason', value = ban_entry.reason, inline = False)
             new_embed.add_field(name = 'Timestamp', value = now.strftime("%b-%d-%Y %H:%M:%S"))
             await button_ctx.edit_origin(embed=new_embed, components=None)
 
@@ -180,7 +178,8 @@ async def check_jac(self, message):
         s = shelve.open(config.WARNINGS)
 
         if str(message.author.id) in jac:
-            await issue_warn(self, s, message, f"**WARNING:** {message.author.mention}, you have already posted in the last 14 days.")
+            await issue_warn(self, s, message, 
+                f"**WARNING:** {message.author.mention}, you have already posted in the last 14 days.")
             await message.delete()
             
         else:
@@ -197,7 +196,8 @@ async def check_jac(self, message):
                     if value['link'] == link:
 
                         # Issue warning as link already exists
-                        await issue_warn(self, s, message, f"**WARNING:** {message.author.mention}, link has already been posted in the last 14 days.")
+                        await issue_warn(self, s, message, 
+                            f"**WARNING:** {message.author.mention}, link has already been posted in the last 14 days.")
                         await message.delete()
 
                         s.close()
@@ -227,7 +227,7 @@ async def check_scam(self, message):
     Each message will be scanned to check either a known scam/phishing domain or
     suspicious text/phrases that were used by userbots to spread malicious URLs.
     """
-    # Find if .ru urls in message - CS:GO spam filter
+    # Spam / phishing filtering
     scam_link = re.search(r"(?P<url>https?://[^\s]+)", message.content)
 
     if scam_link is not None:
@@ -274,16 +274,17 @@ async def scam_check_embed(self, message, filtered_url):
     filtered_url -- URL that was filtered from the message
     """
     # Define a list of two buttons that will be displayed under the embed
+    # add filtered_url to custom_id to avoid action on pre-existing buttons
     buttons = [
         create_button(
             style = ButtonStyle.green,
             label = "Ban",
-            custom_id = "confirm"
+            custom_id = "confirm" + filtered_url
         ),
         create_button(
             style = ButtonStyle.red,
             label = "Cancel",
-            custom_id = "cancel"
+            custom_id = "cancel" + filtered_url
         )]
     action_row = create_actionrow(*buttons)
 
@@ -305,7 +306,7 @@ async def scam_check_embed(self, message, filtered_url):
     button_ctx: ComponentContext = await wait_for_component(self.bot, components=action_row)
 
     # If mod confirms ban
-    if button_ctx.custom_id == 'confirm':
+    if button_ctx.custom_id == 'confirm' + filtered_url:
         modrole = message.guild.get_role(config.MOD_ID) 
         if modrole not in message.author.roles:
 
@@ -328,7 +329,7 @@ async def scam_check_embed(self, message, filtered_url):
                 pass
 
     # If mod cancels
-    elif button_ctx.custom_id == 'cancel':
+    elif button_ctx.custom_id == 'cancel' + filtered_url:
 
         new_embed = discord.Embed(
             title = 'Possible scam - manual review completed',
@@ -468,7 +469,7 @@ async def check_msg_link(self, message):
         # Split the link into its path components 
         link = link_reg.split('/')
 
-        server_id = int(link[4])
+        #server_id = int(link[4])
         channel_id = int(link[5])
         message_id = int(link[6])
 

@@ -11,13 +11,10 @@ import random, typing
 import re, asyncio
 import DiscordUtils
 import cogs.moderation as mod
-import logging
 
 class ModerationSlash(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-    #logging.basicConfig(format='%(asctime)s:%(levelname)s:%(name)s: %(message)s', level=logging.INFO)
 
     # /mute Command
     @cog_ext.cog_slash(name="mute", 
@@ -39,7 +36,7 @@ class ModerationSlash(commands.Cog):
                 ],
                 guild_ids=[config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
@@ -51,12 +48,12 @@ class ModerationSlash(commands.Cog):
         if 'a' in duration:
             
             await member.add_roles(role)
-            print(f'Muting {member} indefinitely')
+            print(f'INFO: Muting {member} indefinitely')
             await ctx.send(embed = discord.Embed(title = f"User {member} has been muted indefinitely",
                                                 colour = config.YELLOW))
             
             embed = discord.Embed(title = 'Muting issued!',
-                            description = f'No duration specified. Muting indefinitely.',
+                            description = 'No duration specified. Muting indefinitely.',
                             colour=config.YELLOW)
             embed.add_field(name = 'User:', value = f'{member.mention}')
             embed.add_field(name = 'Issued by:', value = f'{ctx.author.mention}')
@@ -114,10 +111,10 @@ class ModerationSlash(commands.Cog):
             else:
                 t[str(member.id)] = {'ban': False, 'mute': True,'endBan': None, 'endMute': end_string}
 
-            
+
             await member.add_roles(role)
-            
-            print(f'Timer started - User {member} has been muted for {dur}')
+
+            print(f'INFO: Timer started - User {member} has been muted for {dur}')
 
             await ctx.send(embed = discord.Embed(title = f"User {member} has been muted for {dur}",
                                                 colour = config.YELLOW))
@@ -136,7 +133,7 @@ class ModerationSlash(commands.Cog):
 
             await asyncio.sleep(int(delta.total_seconds()))
             await member.remove_roles(role)
-            print(f'Timer ended - User {member} has been unmuted')
+            print(f'INFO: Timer ended - User {member} has been unmuted')
             t = shelve.open(config.TIMED)
 
             if str(member.id) in t:
@@ -247,7 +244,7 @@ class ModerationSlash(commands.Cog):
             s.close()
 
             await ctx.guild.ban(member, reason=reason)
-            print(f'User {member} was banned')
+            print(f'INFO: User {member} was banned')
             await ctx.send(embed = discord.Embed(title=f"User {member} was banned from the Server.", 
                                                 colour = config.RED))
             #franky.log.info(f"User {member} was banned.")
@@ -445,7 +442,7 @@ class ModerationSlash(commands.Cog):
 
             await ctx.guild.kick(member, reason=reason)
 
-            print(f'User {member} has been kicked.')
+            print(f'INFO: User {member} has been kicked.')
 
             await ctx.send(embed = discord.Embed(title = f"User {member} was kicked from the server",
                                                 colour = config.RED))
@@ -582,7 +579,7 @@ class ModerationSlash(commands.Cog):
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
         ])
     async def warn(self, ctx: SlashContext, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
-        print(f"Warning {member}...")
+        print(f"System: Warning {member}...")
         try:
             s = shelve.open(config.WARNINGS)
             if str(member.id) in s:
@@ -609,10 +606,9 @@ class ModerationSlash(commands.Cog):
             await ctx.send(embed = discord.Embed(
                 title = f'{member} has been warned'
             ))
-            print("Done.")
+            print("System: Done.")
         except:
-            #franky.log.error(f"Error while attempting to mute {member}")
-            logging.warning("oof, warn command broke")
+            print("System: oof, warn command broke")
 
 
     # /unwarn command
@@ -645,15 +641,16 @@ class ModerationSlash(commands.Cog):
                 del tmp['reasons'][-1]
                 s[str(member.id)] = tmp
                 s.close()
-                await mod.Moderation.status(self, ctx, member)
+                await mod.Moderation.status(self, ctx, member.id)
             else:
                 s.close()
-                await mod.Moderation.status(self, ctx, member)
+                await mod.Moderation.status(self, ctx, member.id)
 
-            await ctx.send(embed = discord.Embed(title = f'Last warning removed from user {member}', colour = config.GREEN))
-            print(f'Last warning for user {member} removed.')
+            log_channel = ctx.guild.get_channel(config.LOG_CHAN)
+            await log_channel.send(embed = discord.Embed(title = f'Last warning removed from user {member}', colour = config.GREEN))
+            print(f'System: Last warning for user {member} removed.')
         else:
-            await ctx.send(embed = discord.Embed(title = 'User is not part of the server', colour = config.YELLOW))
+            await ctx.reply(embed = discord.Embed(title = 'User is not part of the server', colour = config.YELLOW))
 
     # /cwarn Command
     @cog_ext.cog_slash(

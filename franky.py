@@ -1,17 +1,16 @@
-# pylint: disable=F0401
-import os, sys, traceback
+# pylint: disable=F0401, W0702, W0703, W0105, W0613
+import os, traceback
 import logging
+import asyncio
+import random
+from dotenv import load_dotenv
 import discord
 from discord.ext import commands, tasks
 from discord_slash import SlashCommand
-from dotenv import load_dotenv
-import asyncio
-import config
 import shelve, pytz
 from datetime import datetime, timedelta
 from cogwatch import Watcher
-import random
-
+import config
 
 # System setup
 log = logging.getLogger('discord')
@@ -51,11 +50,11 @@ if __name__ == '__main__':
     """Load the extensions from the list and launch a warning on failure."""
     for extension in init_extensions:
         try:
-            log.info(f'Loading extension {extension}')
+            print(f'INFO: Loading extension {extension}')
             bot.load_extension(extension)
-        except Exception as e:
+        except Exception as exception:
             print(f'can\'t load extension {extension}')
-            log.error(f'Failed to load extension {extension}.')
+            log.error('Failed to load extension %s', extension)
             traceback.print_exc()
 
 
@@ -75,9 +74,9 @@ async def check_timers():
         for elem in jac:
             # setup current time
             tz_TX = pytz.timezone('US/central')
-            now_string = datetime.now(tz_TX).strftime('%b-%d-%Y %H:%M:%S')
-            now = datetime.strptime(now_string, '%b-%d-%Y %H:%M:%S')
-            time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y %H:%M%:S')
+            now_string = datetime.now(tz_TX).strftime('%b-%d-%Y')
+            now = datetime.strptime(now_string, '%b-%d-%Y')
+            time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y')
             delta = timedelta(days=14)
             newtime = time + delta
 
@@ -116,7 +115,7 @@ async def check_timers():
 
                     except:
                         print('\nError in fetching user, removing entry from db...')
-                    
+
                     t[mem]['mute'] = False
                     t[mem]['endMute'] = None
                     t.sync()
@@ -161,10 +160,10 @@ async def check_timers():
 
         
         print('Done! Waiting 60 minutes for next check...')
-        print('---------')
+        print('-----------')
     except:
         print('Error while checking timers, waiting next loop...')
-        print('---------')
+        print('-----------')
 
 @tasks.loop(minutes=76)
 async def random_msg():

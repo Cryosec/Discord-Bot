@@ -1,11 +1,8 @@
 # pylint: disable=F0401
+import  asyncio
 import discord
 from discord.ext import commands
-from datetime import datetime
 import config
-import cogs.moderation as mod
-import cogs.giveaway as ga
-import pytz, asyncio
 
 ### CONSTANTS ###
 
@@ -17,7 +14,7 @@ class Users(commands.Cog):
     @commands.command(name='help')
     #@commands.cooldown(1, 30, commands.BucketType.channel)
     @commands.guild_only()
-    async def help(self, ctx, command=None):
+    async def help(self, ctx):
 
         await ctx.send(embed = discord.Embed(title = 'Type / to see the list of available commands'))
         
@@ -106,6 +103,11 @@ class Users(commands.Cog):
     @commands.guild_only()
     async def me(self, ctx):
         member = ctx.message.author
+
+        # Gooz keeps using this command every day
+        if member.id == config.GOOZ_ID:
+            await ctx.reply('Stop using this command, gooz')
+            return
 
         embed = discord.Embed(title=f'Information on {member.name}#{member.discriminator}', colour = member.colour)
         embed.set_thumbnail(url = member.avatar_url)

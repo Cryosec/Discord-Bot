@@ -1,4 +1,4 @@
-# pylint: disable=F0401
+# pylint: disable=F0401, W0702, W0703, W0105, W0613
 import discord
 from discord_slash import SlashCommand
 from discord.ext import commands
@@ -43,7 +43,7 @@ class Moderation(commands.Cog):
             await member.add_roles(role)
             
             embed = discord.Embed(title = 'Muting issued!',
-                            description = f'No duration specified. Muting indefinitely.',
+                            description = 'No duration specified. Muting indefinitely.',
                             colour=config.YELLOW)
             embed.add_field(name = 'User:', value = f'{member.mention}')
             embed.add_field(name = 'Issued by:', value = f'{ctx.author.mention}')
@@ -138,6 +138,9 @@ class Moderation(commands.Cog):
     @commands.guild_only()
     async def unmute(self, ctx, member: typing.Optional[discord.Member] = None):
         role = ctx.guild.get_role(config.MUTE_ID)
+        
+        embed = discord.Embed(title = f'User {member} has been unmuted.', colour = config.BLUE)
+        await ctx.reply(embed=embed)
         await member.remove_roles(role)
 
     # !warn = give a warning to member
@@ -301,8 +304,8 @@ class Moderation(commands.Cog):
     # !timers = return all current timed events
     @commands.command(name='timers')
     @commands.guild_only()
-    async def show_timers(self, ctx, *, type: str = None):
-        if type is None:
+    async def show_timers(self, ctx, *, group: str = None):
+        if group is None:
             t = shelve.open(config.TIMED)
 
             timers = []
@@ -627,8 +630,11 @@ class Moderation(commands.Cog):
     # Reload config.py
     @commands.command(name='reload')
     async def reload(self, ctx):
-        importlib.reload(config)
-        await ctx.reply('Configuration file has been reloaded.')
+        if ctx.message.author.id == config.CRYO_ID:
+            importlib.reload(config)
+            await ctx.reply('Switching to your side arm is always faster than reloading.')
+        else:
+            await ctx.reply('You\'re not Cryo, don\'t fool around.')
 
 
 def setup(bot):
