@@ -419,14 +419,14 @@ class ModerationSlash(commands.Cog):
             now = datetime.now(tz_TX)
             dt = now.strftime("%b-%d-%Y %H:%M:%S")
             
-            # Create feedback embed
-            embed = discord.Embed(title = 'User kick issued!', 
-                                description = f'Reason: {reason}',
-                                colour = config.RED)
-            embed.add_field(name = 'Issuer:', value = ctx.author.mention)
-            embed.add_field(name = 'Kicked:', value = member.mention)
-            embed.add_field(name = 'When:', value = dt)
-            embed.set_footer(text=config.FOOTER)
+            # Create feedback embed, probably unnecessary
+            #embed = discord.Embed(title = 'User kick issued!', 
+            #                    description = f'Reason: {reason}',
+            #                    colour = config.RED)
+            #embed.add_field(name = 'Issuer:', value = ctx.author.mention)
+            #embed.add_field(name = 'Kicked:', value = member.mention)
+            #embed.add_field(name = 'When:', value = dt)
+            #embed.set_footer(text=config.FOOTER)
 
             # Record kick
             if str(member.id) in s:
@@ -579,7 +579,7 @@ class ModerationSlash(commands.Cog):
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
         ])
     async def warn(self, ctx: SlashContext, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
-        print(f"System: Warning {member}...")
+        print(f"INFO: Warning {member}...")
         try:
             s = shelve.open(config.WARNINGS)
             if str(member.id) in s:
@@ -606,9 +606,9 @@ class ModerationSlash(commands.Cog):
             await ctx.send(embed = discord.Embed(
                 title = f'{member} has been warned'
             ))
-            print("System: Done.")
+            print("INFO: Done.")
         except:
-            print("System: oof, warn command broke")
+            print("WARNING: oof, warn command broke")
 
 
     # /unwarn command
@@ -648,7 +648,7 @@ class ModerationSlash(commands.Cog):
 
             log_channel = ctx.guild.get_channel(config.LOG_CHAN)
             await log_channel.send(embed = discord.Embed(title = f'Last warning removed from user {member}', colour = config.GREEN))
-            print(f'System: Last warning for user {member} removed.')
+            print(f'INFO: Last warning for user {member} removed.')
         else:
             await ctx.reply(embed = discord.Embed(title = 'User is not part of the server', colour = config.YELLOW))
 

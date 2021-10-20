@@ -236,22 +236,29 @@ async def check_scam(self, message):
         scam_msg = message.content.replace(scam_link.group("url"), '')
 
         if any(y in scam_msg.lower() for y in config.SCAMTEXT):
-            await message.delete()
+            try:
+                await message.delete()
 
-            if scam_link.group("url") not in config.SCAM:
-                config.SCAM.append(scam_link.group("url"))
+                if scam_link.group("url") not in config.SCAM:
+                    config.SCAM.append(scam_link.group("url"))
 
-                await scam_check_embed(self, message, scam_link.group("url"))
+                    await scam_check_embed(self, message, scam_link.group("url"))
+                    print('INFO: nitro scam blocked.')
+            except discord.errors.NotFound:
+                print('INFO: Message not found.')
 
         # normal url scam check
         if any(x in scam_link.group("url") for x in config.SCAMURLS):
-            
-            await message.delete()
+            try:
+                await message.delete()
 
-            if scam_link.group("url") not in config.SCAM:
-                config.SCAM.append(scam_link.group("url"))
+                if scam_link.group("url") not in config.SCAM:
+                    config.SCAM.append(scam_link.group("url"))
 
-                await scam_check_embed(self, message, scam_link.group("url"))
+                    await scam_check_embed(self, message, scam_link.group("url"))
+                    print('INFO: general scam blocked.')
+            except discord.errors.NotFound:
+                print('INFO: message not found.')
     else:
         # discord nitro scam, aggressive check pt.2
         scam_msg = message.content
@@ -263,6 +270,7 @@ async def check_scam(self, message):
                 config.SCAM.append(scam_msg)
 
                 await scam_check_embed(self, message, scam_msg)
+                print('INFO: nitro text scam blocked.')
 
 
 async def scam_check_embed(self, message, filtered_url):
@@ -399,6 +407,7 @@ async def check_invites(self, message):
 
                 channel = message.guild.get_channel(config.LOG_CHAN)
                 await channel.send(content=None, embed=embed)
+                print('SYSYEM: invite link blocked.')
                 # Delete message
                 await message.delete()
 
@@ -515,7 +524,7 @@ async def issue_warn(self, s, message, warning):
 
         # If second violation, kick from the server
         # and notify user in DMs
-        if count == 2:
+        if count == 2 or count == 3:
             reason = 'Kick: Multiple violations of 14-day rule in JAC'
 
             tmp = s[str(message.author.id)]
@@ -526,12 +535,12 @@ async def issue_warn(self, s, message, warning):
             
             await message.author.send('You have been kicked from Drewski\'s Operators server for violating the 14-day wait period for clan ads multiple times.')
             await message.guild.kick(message.author, reason=reason)
-        elif count == 3:
+        elif count == 4:
             reason = 'Ban: Multiple kicks for violation of 14-day rule in JAC'
 
             tmp = s[str(message.author.id)]
             tmp['bans'] = tmp.get('bans') + 1
-            tmp['reasons'].appen(reason)
+            tmp['reasons'].append(reason)
 
             s[str(message.autorh.id)] = tmp
 
