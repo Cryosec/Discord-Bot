@@ -63,7 +63,7 @@ async def check_jac_timers(now):
     jac = shelve.open(config.JAC)
     for elem in jac:
         #entry_time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y')
-        entry_time = datetime.strptime(jac[elem]['date'])
+        entry_time = datetime.strptime(jac[elem]['date'], '%b-%d-%Y %H:%M:%S')
         delta = timedelta(days=14)
         newtime = entry_time + delta
 
@@ -144,12 +144,12 @@ async def check_timers():
     # Setup current time
     tz_TX = pytz.timezone('US/central')
     now_string = datetime.now(tz_TX).strftime('%b-%d-%Y %H:%M:%S')
-    now = datetime.strptime(now_string, '%%b-%d-%Y %H:%M:%S')
+    now = datetime.strptime(now_string, '%b-%d-%Y %H:%M:%S')
 
     # Run through the timers
     # JAC refers to channel join-a-clan, where clan ads are posted
     try:
-        check_jac_timers(now)
+        await check_jac_timers(now)
 
         print('Checking if I missed some unbanning or unmuting...')
         t = shelve.open(config.TIMED, writeback=True)
@@ -158,10 +158,10 @@ async def check_timers():
         for mem in t:
             print(mem + '- Ban: ' + str(t[mem]['ban']) + ', Mute: ' + str(t[mem]['mute']))
             if t[mem]['mute']:
-                check_mute_timers(now, t, guild, channel, mem)
+                await check_mute_timers(now, t, guild, channel, mem)
 
             if t[mem]['ban']:
-                check_ban_timers(now, t, guild, channel, mem)
+                await check_ban_timers(now, t, guild, channel, mem)
 
             # If there are no more timers for a user, there's no need to keep track of them
             if not t[mem]['mute'] and not t[mem]['ban']:
@@ -173,6 +173,7 @@ async def check_timers():
         print('-----------')
     except:
         print('Error while checking timers, waiting next loop...')
+        traceback.print_exc()
         print('-----------')
 
 
