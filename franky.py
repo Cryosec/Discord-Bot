@@ -13,7 +13,7 @@ import config
 
 # System setup
 log = logging.getLogger('discord')
-log.setLevel(logging.INFO)
+log.setLevel(logging.WARNING)
 handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
 handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
 log.addHandler(handler)
@@ -52,7 +52,7 @@ if __name__ == '__main__':
             print(f'INFO: Loading extension {extension}')
             bot.load_extension(extension)
         except Exception as exception:
-            print(f'can\'t load extension {extension}')
+            print(f'ERROR: can\'t load extension {extension}')
             log.error('Failed to load extension %s', extension)
             traceback.print_exc()
 

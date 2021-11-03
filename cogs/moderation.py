@@ -1,6 +1,5 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613
 import discord
-from discord_slash import SlashCommand
 from discord.ext import commands
 import config
 import shelve, pytz
@@ -14,7 +13,7 @@ import importlib
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-    
+
     # Check if command from Moderator
     async def cog_check(self, ctx):
         mod = ctx.guild.get_role(config.MOD_ID)
@@ -41,7 +40,7 @@ class Moderation(commands.Cog):
         if 'a' in duration:
 
             await member.add_roles(role)
-            
+
             embed = discord.Embed(title = 'Muting issued!',
                             description = 'No duration specified. Muting indefinitely.',
                             colour=config.YELLOW)
@@ -90,7 +89,7 @@ class Moderation(commands.Cog):
                     end = end + timedelta(seconds=int(y))
                     delta = delta + timedelta(seconds=int(y))
                     dur = dur + y + ' seconds '
-                
+
             end_string = end.strftime('%b-%d-%Y %H:%M:%S')
 
             t = shelve.open(config.TIMED)
@@ -101,9 +100,9 @@ class Moderation(commands.Cog):
             else:
                 t[str(member.id)] = {'ban': False, 'mute': True,'endBan': None, 'endMute': end_string}
 
-            
+
             await member.add_roles(role)
-            
+
             dur = dur[0:-1]
             embed = discord.Embed(title = 'Muting issued!',
                             description = f'A duration of `{dur}` was specified.',
@@ -123,7 +122,7 @@ class Moderation(commands.Cog):
 
             if str(member.id) in t:
                 del t[str(member.id)]
-            
+
             t.close()
 
             embed = discord.Embed(title = 'Timed mute complete',
@@ -132,13 +131,13 @@ class Moderation(commands.Cog):
             embed.set_footer(text=config.FOOTER)
 
             await channel.send(content=None, embed=embed)
-            
+
     # !unmute = unmute, duh
     @commands.command(name='unmute' , brief=config.BRIEF_UNMUTE, help=config.HELP_UNMUTE)
     @commands.guild_only()
     async def unmute(self, ctx, member: typing.Optional[discord.Member] = None):
         role = ctx.guild.get_role(config.MUTE_ID)
-        
+
         embed = discord.Embed(title = f'User {member} has been unmuted.', colour = config.BLUE)
         await ctx.reply(embed=embed)
         await member.remove_roles(role)
@@ -204,7 +203,7 @@ class Moderation(commands.Cog):
     @commands.command(name='cwarn', brief=config.BRIEF_CLEAR, help=config.HELP_CLEAR)
     @commands.guild_only()
     async def cwarn(self, ctx, member: typing.Optional[discord.Member] = None):
-        
+
         if member is not None:
             s = shelve.open(config.WARNINGS)
             if str(member.id) in s:
@@ -340,13 +339,13 @@ class Moderation(commands.Cog):
         embeds= []
 
         for entry in warns:
-            
+
             user = warns[entry]['tag']
             embed = discord.Embed(title = 'Warnings list', description = f'Current user: {user}', color=config.GREEN)
             embed.add_field(name="Warnings", value = '\n'.join('{}: {}'.format(*k) for k in enumerate(warns[entry]['reasons'])))
 
             embeds.append(embed)
-        
+
         warns.close()
         paginator = DiscordUtils.Pagination.CustomEmbedPaginator(ctx, auto_footer=True, remove_reactions=True)
         paginator.add_reaction('⏪', "back")
@@ -364,12 +363,12 @@ class Moderation(commands.Cog):
         await ctx.message.channel.purge(limit= n + 1)
 
         channel = ctx.guild.get_channel(config.LOG_CHAN)
-        
-        embed = discord.Embed(title = 'Bulk Message Deletion', 
+
+        embed = discord.Embed(title = 'Bulk Message Deletion',
                             description = f'{n} messages were deleted from {ctx.channel.name} by {ctx.author.name}#{ctx.author.discriminator}',
                             colour = config.ORANGE)
         embed.set_footer(text=config.FOOTER)
-        
+
         await channel.send(content=None, embed=embed)
 
     # !kick = kick user from server
@@ -382,13 +381,13 @@ class Moderation(commands.Cog):
             await ctx.send('You cannot kick a moderator through me.')
         else:
             s = shelve.open(config.WARNINGS)
-            
+
             tz_TX = pytz.timezone('US/Central')
             now = datetime.now(tz_TX)
             dt = now.strftime("%b-%d-%Y %H:%M:%S")
-            
+
             # Create feedback embed
-            embed = discord.Embed(title = 'User kick issued!', 
+            embed = discord.Embed(title = 'User kick issued!',
                                 description = f'Reason: {reason}',
                                 colour = config.RED)
             embed.add_field(name = 'Issuer:', value = ctx.author.mention)
@@ -404,8 +403,13 @@ class Moderation(commands.Cog):
 
                 s[str(member.id)] = tmp
             else:
-                s[str(member.id)] = {'warnings': 0, 'kicks': 1, 'bans': 0, 'reasons': [reason], 'tag': str(member)}
-            
+                s[str(member.id)] = {
+                    'warnings': 0,
+                    'kicks': 1,
+                    'bans': 0,
+                    'reasons': [reason],
+                    'tag': str(member)}
+
             s.close()
 
             await ctx.guild.kick(member, reason=reason)
@@ -464,7 +468,7 @@ class Moderation(commands.Cog):
                         end = end + timedelta(seconds=int(y))
                         delta = delta + timedelta(seconds=int(y))
                         dur = dur + y + ' seconds '
-                    
+
                 end_string = end.strftime('%b-%d-%Y %H:%M:%S')
 
                 t = shelve.open(config.TIMED)
@@ -518,13 +522,13 @@ class Moderation(commands.Cog):
             await ctx.send('You cannot ban a moderator through me.')
         else:
             s = shelve.open(config.WARNINGS)
-            
+
             tz_TX = pytz.timezone('US/Central')
             now = datetime.now(tz_TX)
             dt = now.strftime("%b-%d-%Y %H:%M:%S")
-            
+
             # Create feedback embed
-            embed = discord.Embed(title = 'User ban issued!', 
+            embed = discord.Embed(title = 'User ban issued!',
                                 description = f'Reason: {reason}',
                                 colour = config.RED)
             embed.add_field(name = 'Issuer:', value = ctx.author.mention)
@@ -540,8 +544,13 @@ class Moderation(commands.Cog):
 
                 s[str(member.id)] = tmp
             else:
-                s[str(member.id)] = {'warnings': 0, 'kicks': 0, 'bans': 1, 'reasons': [reason], 'tag': str(member)}
-            
+                s[str(member.id)] = {
+                    'warnings': 0,
+                    'kicks': 0,
+                    'bans': 1,
+                    'reasons': [reason],
+                    'tag': str(member)}
+
             s.close()
 
             await ctx.guild.ban(member, reason=reason)
@@ -583,7 +592,7 @@ class Moderation(commands.Cog):
     @commands.command(name='lundy')
     @commands.guild_only()
     async def lundy(self, ctx):
-        
+
         # Remove command call
         await ctx.message.channel.purge(limit = 1)
 
@@ -607,7 +616,7 @@ class Moderation(commands.Cog):
         await toxy.add_roles(muted)
         await asyncio.sleep(30)
         await toxy.remove_roles(muted)
-        
+
     # Floppa Friday!
     @commands.command(name="floppa")
     @commands.guild_only()
@@ -618,7 +627,7 @@ class Moderation(commands.Cog):
         await member.add_roles(muted)
         await asyncio.sleep(30)
         await member.remove_roles(muted)
-    
+
     # Error handling
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):

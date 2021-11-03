@@ -1,24 +1,23 @@
-# pylint: disable=F0401
-import discord
-from discord_slash import SlashCommand, cog_ext, SlashContext
-from discord_slash.utils.manage_commands import create_option, create_permission, create_choice
-from discord_slash.model import SlashCommandPermissionType
-from discord.ext import commands
-import config
+# pylint: disable=F0401, W0702, W0703, W0105, W0613
 import shelve, pytz
 from datetime import datetime, timedelta
-import random, typing
+import typing
 import re, asyncio
-import DiscordUtils
+import discord
+from discord_slash import cog_ext, SlashContext
+from discord_slash.utils.manage_commands import create_option, create_permission
+from discord_slash.model import SlashCommandPermissionType
+from discord.ext import commands
 import cogs.moderation as mod
+import config
 
 class ModerationSlash(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     # /mute Command
-    @cog_ext.cog_slash(name="mute", 
-                description = config.BRIEF_MUTE, 
+    @cog_ext.cog_slash(name="mute",
+                description = config.BRIEF_MUTE,
                 default_permission = False,
                 options = [
                     create_option(
@@ -46,12 +45,13 @@ class ModerationSlash(commands.Cog):
         role = ctx.guild.get_role(config.MUTE_ID)
 
         if 'a' in duration:
-            
+
             await member.add_roles(role)
             print(f'INFO: Muting {member} indefinitely')
-            await ctx.send(embed = discord.Embed(title = f"User {member} has been muted indefinitely",
-                                                colour = config.YELLOW))
-            
+            await ctx.send(embed = discord.Embed(
+                title = f"User {member} has been muted indefinitely",
+                colour = config.YELLOW))
+
             embed = discord.Embed(title = 'Muting issued!',
                             description = 'No duration specified. Muting indefinitely.',
                             colour=config.YELLOW)
@@ -100,7 +100,7 @@ class ModerationSlash(commands.Cog):
                     end = end + timedelta(seconds=int(y))
                     delta = delta + timedelta(seconds=int(y))
                     dur = dur + y + ' seconds '
-                
+
             end_string = end.strftime('%b-%d-%Y %H:%M:%S')
 
             t = shelve.open(config.TIMED)
@@ -109,7 +109,11 @@ class ModerationSlash(commands.Cog):
                 t[str(member.id)]['mute'] = True
                 t[str(member.id)]['endMute'] = end_string
             else:
-                t[str(member.id)] = {'ban': False, 'mute': True,'endBan': None, 'endMute': end_string}
+                t[str(member.id)] = {
+                    'ban': False,
+                    'mute': True,
+                    'endBan': None,
+                    'endMute': end_string}
 
 
             await member.add_roles(role)
@@ -138,7 +142,7 @@ class ModerationSlash(commands.Cog):
 
             if str(member.id) in t:
                 del t[str(member.id)]
-            
+
             t.close()
 
             embed = discord.Embed(title = 'Timed mute complete',
@@ -151,8 +155,8 @@ class ModerationSlash(commands.Cog):
 
     # /unmute Command
     @cog_ext.cog_slash(
-        name="unmute",     
-        description = config.BRIEF_UNMUTE, 
+        name="unmute",
+        description = config.BRIEF_UNMUTE,
         default_permission = False,
         options = [
             create_option(
@@ -164,7 +168,7 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids=[config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
@@ -177,7 +181,7 @@ class ModerationSlash(commands.Cog):
             print(f'User {member} was unmuted')
             await ctx.send(embed = discord.Embed(title = f'User {member} was unmuted.',
                                                 colour = config.GREEN))
-        
+
 
     # /ban Command
     @cog_ext.cog_slash(
@@ -200,13 +204,13 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids = [config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
         ])
     async def ban_user(self, ctx: SlashContext, member: typing.Optional[discord.Member] = None, *, reason = 'Unspecified'):
-        
+
         if member is None:
             await ctx.reply("No member found with ID, might not be in the server anymore.")
             return
@@ -217,13 +221,13 @@ class ModerationSlash(commands.Cog):
             await ctx.send('You cannot ban a moderator through me.')
         else:
             s = shelve.open(config.WARNINGS)
-            
+
             tz_TX = pytz.timezone('US/Central')
             now = datetime.now(tz_TX)
             dt = now.strftime("%b-%d-%Y %H:%M:%S")
-            
+
             # Create feedback embed
-            embed = discord.Embed(title = 'User ban issued!', 
+            embed = discord.Embed(title = 'User ban issued!',
                                 description = f'Reason: {reason}',
                                 colour = config.RED)
             embed.add_field(name = 'Issuer:', value = ctx.author.mention)
@@ -239,15 +243,19 @@ class ModerationSlash(commands.Cog):
 
                 s[str(member.id)] = tmp
             else:
-                s[str(member.id)] = {'warnings': 0, 'kicks': 0, 'bans': 1, 'reasons': [reason], 'tag': str(member)}
-            
+                s[str(member.id)] = {
+                    'warnings': 0,
+                    'kicks': 0,
+                    'bans': 1,
+                    'reasons': [reason],
+                    'tag': str(member)}
+
             s.close()
 
             await ctx.guild.ban(member, reason=reason)
             print(f'INFO: User {member} was banned')
-            await ctx.send(embed = discord.Embed(title=f"User {member} was banned from the Server.", 
+            await ctx.send(embed = discord.Embed(title=f"User {member} was banned from the Server.",
                                                 colour = config.RED))
-            #franky.log.info(f"User {member} was banned.")
             channel = ctx.guild.get_channel(config.LOG_CHAN)
             await channel.send(content=None, embed=embed)
 
@@ -279,7 +287,7 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids = [config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
@@ -333,7 +341,7 @@ class ModerationSlash(commands.Cog):
                         end = end + timedelta(seconds=int(y))
                         delta = delta + timedelta(seconds=int(y))
                         dur = dur + y + ' seconds '
-                    
+
                 end_string = end.strftime('%b-%d-%Y %H:%M:%S')
 
                 t = shelve.open(config.TIMED)
@@ -342,7 +350,11 @@ class ModerationSlash(commands.Cog):
                     t[str(member.id)]['ban'] = True
                     t[str(member.id)]['endBan'] = end_string
                 else:
-                    t[str(member.id)] = {'ban': True, 'mute': False,'endBan': end_string, 'endMute': None}
+                    t[str(member.id)] = {
+                        'ban': True,
+                        'mute': False,
+                        'endBan': end_string,
+                        'endMute': None}
 
                 dur = dur[0:-1]
                 embed = discord.Embed(title = 'Temp Ban issued!',
@@ -402,7 +414,7 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids = [config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
@@ -414,13 +426,13 @@ class ModerationSlash(commands.Cog):
             await ctx.send('You cannot kick a moderator through me.')
         else:
             s = shelve.open(config.WARNINGS)
-            
-            tz_TX = pytz.timezone('US/Central')
-            now = datetime.now(tz_TX)
-            dt = now.strftime("%b-%d-%Y %H:%M:%S")
-            
+
+            #tz_TX = pytz.timezone('US/Central')
+            #now = datetime.now(tz_TX)
+            #dt = now.strftime("%b-%d-%Y %H:%M:%S")
+
             # Create feedback embed, probably unnecessary
-            #embed = discord.Embed(title = 'User kick issued!', 
+            #embed = discord.Embed(title = 'User kick issued!',
             #                    description = f'Reason: {reason}',
             #                    colour = config.RED)
             #embed.add_field(name = 'Issuer:', value = ctx.author.mention)
@@ -436,8 +448,13 @@ class ModerationSlash(commands.Cog):
 
                 s[str(member.id)] = tmp
             else:
-                s[str(member.id)] = {'warnings': 0, 'kicks': 1, 'bans': 0, 'reasons': [reason], 'tag': str(member)}
-            
+                s[str(member.id)] = {
+                    'warnings': 0,
+                    'kicks': 1,
+                    'bans': 0,
+                    'reasons': [reason],
+                    'tag': str(member)}
+
             s.close()
 
             await ctx.guild.kick(member, reason=reason)
@@ -447,8 +464,8 @@ class ModerationSlash(commands.Cog):
             await ctx.send(embed = discord.Embed(title = f"User {member} was kicked from the server",
                                                 colour = config.RED))
 
-            channel = ctx.guild.get_channel(config.LOG_CHAN)
-            await channel.send(content=None, embed=embed)
+            #channel = ctx.guild.get_channel(config.LOG_CHAN)
+            #await channel.send(content=None, embed=embed)
 
 
     # /status Command
@@ -466,7 +483,7 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids = [config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
@@ -477,7 +494,6 @@ class ModerationSlash(commands.Cog):
 
             user = await self.bot.fetch_user(user.id)
             member = ctx.guild.get_member(user.id)
-
 
             if member is not None:
 
@@ -495,8 +511,8 @@ class ModerationSlash(commands.Cog):
                 s = shelve.open(config.WARNINGS)
                 if str(member.id) in s:
                     embed = discord.Embed(title = f'Status of user {member}',
-                                        description = '\n'.join('{}: {}'.format(*k) for k in enumerate(s[str(member.id)]['reasons'])),
-                                        colour = config.GREEN)
+                        description = '\n'.join('{}: {}'.format(*k) for k in enumerate(s[str(member.id)]['reasons'])),
+                        colour = config.GREEN)
                     embed.add_field(name = 'Warnings:', value = s[str(member.id)]['warnings'])
                     embed.add_field(name = 'Kicks:', value = s[str(member.id)]['kicks'])
                     embed.add_field(name = 'Bans:', value = s[str(member.id)]['bans'])
@@ -526,8 +542,8 @@ class ModerationSlash(commands.Cog):
                 s = shelve.open(config.WARNINGS)
                 if str(user.id) in s:
                     embed = discord.Embed(title = f'Status of user {user}',
-                                        description = '**User is no longer in the server**\n' + '\n'.join('{}: {}'.format(*k) for k in enumerate(s[str(user.id)]['reasons'])),
-                                        colour = config.GREEN)
+                        description = '**User is no longer in the server**\n' + '\n'.join('{}: {}'.format(*k) for k in enumerate(s[str(user.id)]['reasons'])),
+                        colour = config.GREEN)
                     embed.add_field(name = 'Warnings:', value = s[str(user.id)]['warnings'])
                     embed.add_field(name = 'Kicks:', value = s[str(user.id)]['kicks'])
                     embed.add_field(name = 'Bans:', value = s[str(user.id)]['bans'])
@@ -538,8 +554,8 @@ class ModerationSlash(commands.Cog):
                     await ctx.reply(content=None, embed=embed)
                 else:
                     embed = discord.Embed(title = f'Status of user {user}',
-                                        description = '**User is not part of the server.**',
-                                        colour = config.GREEN)
+                        description = '**User is not part of the server.**',
+                        colour = config.GREEN)
                     embed.add_field(name = 'Warnings:', value = '0')
                     embed.add_field(name = 'Kicks:', value = '0')
                     embed.add_field(name = 'Bans:', value = '0')
@@ -573,7 +589,7 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids = [config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
@@ -589,7 +605,12 @@ class ModerationSlash(commands.Cog):
                 s[str(member.id)] = tmp
 
             else:
-                s[str(member.id)] = {'warnings': 1, 'kicks': 0, 'bans': 0, 'reasons': [reason], 'tag': str(member)}
+                s[str(member.id)] = {
+                    'warnings': 1,
+                    'kicks': 0,
+                    'bans': 0,
+                    'reasons': [reason],
+                    'tag': str(member)}
 
             channel = ctx.guild.get_channel(config.LOG_CHAN)
             embed = discord.Embed(title = 'Warning issued!',
@@ -613,8 +634,8 @@ class ModerationSlash(commands.Cog):
 
     # /unwarn command
     @cog_ext.cog_slash(
-        name="unwarn",     
-        description = config.BRIEF_UNWARN, 
+        name="unwarn",
+        description = config.BRIEF_UNWARN,
         default_permission = False,
         options = [
             create_option(
@@ -626,7 +647,7 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids=[config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
@@ -647,15 +668,17 @@ class ModerationSlash(commands.Cog):
                 await mod.Moderation.status(self, ctx, member.id)
 
             log_channel = ctx.guild.get_channel(config.LOG_CHAN)
-            await log_channel.send(embed = discord.Embed(title = f'Last warning removed from user {member}', colour = config.GREEN))
+            await log_channel.send(embed = discord.Embed(
+                title = f'Last warning removed from user {member}', colour = config.GREEN))
             print(f'INFO: Last warning for user {member} removed.')
         else:
-            await ctx.reply(embed = discord.Embed(title = 'User is not part of the server', colour = config.YELLOW))
+            await ctx.reply(embed = discord.Embed(
+                title = 'User is not part of the server', colour = config.YELLOW))
 
     # /cwarn Command
     @cog_ext.cog_slash(
-        name="cwarn",     
-        description = config.BRIEF_CLEAR, 
+        name="cwarn",
+        description = config.BRIEF_CLEAR,
         default_permission = False,
         options = [
             create_option(
@@ -667,13 +690,13 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids=[config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
         ])
     async def cwarn(self, ctx: SlashContext, member: typing.Optional[discord.Member] = None):
-        
+
         if member is not None:
             s = shelve.open(config.WARNINGS)
             if str(member.id) in s:
@@ -683,15 +706,17 @@ class ModerationSlash(commands.Cog):
             else:
                 s.close()
                 await mod.Moderation.status(self, ctx, member.id)
-            await ctx.send(embed = discord.Embed(title = f'Warnings cleared for user {member}', colour = config.GREEN))
+            await ctx.send(embed = discord.Embed(
+                title = f'Warnings cleared for user {member}', colour = config.GREEN))
             print(f'Warnings for user {member} cleared.')
         else:
-            await ctx.reply(emved = discord.Embed(title='User is not part of the server', colour = config.YELLOW))
+            await ctx.reply(emved = discord.Embed(
+                title='User is not part of the server', colour = config.YELLOW))
 
     # /jac Command
     @cog_ext.cog_slash(
-        name="jac",     
-        description = config.BRIEF_JAC, 
+        name="jac",
+        description = config.BRIEF_JAC,
         default_permission = False,
         options = [
             create_option(
@@ -703,7 +728,7 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids=[config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
@@ -738,8 +763,8 @@ class ModerationSlash(commands.Cog):
 
     # /unjac command
     @cog_ext.cog_slash(
-        name="unjac",     
-        description = "Remove last JAC entry for user", 
+        name="unjac",
+        description = "Remove last JAC entry for user",
         default_permission = False,
         options = [
             create_option(
@@ -751,7 +776,7 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids=[config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
@@ -763,9 +788,11 @@ class ModerationSlash(commands.Cog):
             if str(member.id) in jac:
                 del jac[str(member.id)]
             jac.close()
-            await ctx.send(embed = discord.Embed(title = f'JAC entry removed for user {member}', colour = config.GREEN))
+            await ctx.send(embed = discord.Embed(
+                title = f'JAC entry removed for user {member}', colour = config.GREEN))
         else:
-            await ctx.send(embed = discord.Embed(title = f'User is not part of the server', colour = config.YELLOW))
+            await ctx.send(embed = discord.Embed(
+                title = 'User is not part of the server', colour = config.YELLOW))
 
     # /timers Command
     @cog_ext.cog_slash(
@@ -775,13 +802,13 @@ class ModerationSlash(commands.Cog):
         guild_ids = [config.GUILD]
     )
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
         ])
-    async def show_timers(self, ctx: SlashContext, *, type: str = None):
-        if type is None:
+    async def show_timers(self, ctx: SlashContext, *, group: str = None):
+        if group is None:
             t = shelve.open(config.TIMED)
 
             timers = []
@@ -794,17 +821,22 @@ class ModerationSlash(commands.Cog):
                 endMute = str(t[user]['endMute'])
                 endBan = str(t[user]['endBan'])
 
-                string = f'{usr.mention}' + '```\nBan: ' + ban + '\nMute: ' + mute + '\nendBan: ' + endBan + '\nendMute: ' + endMute + '```'
-
-                timers.append(string)
+                timers.append(
+                    f'{usr.mention}' +
+                    '```\nBan: ' + ban +
+                    '\nMute: ' + mute +
+                    '\nendBan: ' + endBan +
+                    '\nendMute: ' + endMute +
+                    '```')
 
             if not timers:
-                await ctx.send(embed = discord.Embed(title = 'There are no timers left.', colour = config.YELLOW))
+                await ctx.send(embed = discord.Embed(
+                    title = 'There are no timers left.', colour = config.YELLOW))
             else:
 
                 embed = discord.Embed(title = 'Timers',
-                                        description = '\n'.join('{}: {}'.format(*k) for k in enumerate(timers)),
-                                        colour = config.GREEN)
+                    description = '\n'.join('{}: {}'.format(*k) for k in enumerate(timers)),
+                    colour = config.GREEN)
                 embed.set_footer(text=config.FOOTER)
 
                 await ctx.send(embed=embed)
@@ -812,8 +844,8 @@ class ModerationSlash(commands.Cog):
 
     # /delete Command
     @cog_ext.cog_slash(
-        name="delete",     
-        description = config.BRIEF_DELETE, 
+        name="delete",
+        description = config.BRIEF_DELETE,
         default_permission = False,
         options = [
             create_option(
@@ -825,7 +857,7 @@ class ModerationSlash(commands.Cog):
         ],
         guild_ids=[config.GUILD])
     @cog_ext.permission(
-        guild_id = config.GUILD, 
+        guild_id = config.GUILD,
         permissions = [
             create_permission(config.MOD_ID, SlashCommandPermissionType.ROLE, True),
             create_permission(config.ADMIN_ID, SlashCommandPermissionType.ROLE, True),
@@ -835,12 +867,13 @@ class ModerationSlash(commands.Cog):
         await ctx.channel.purge(limit= messages)
 
         channel = ctx.guild.get_channel(config.LOG_CHAN)
-        
-        embed = discord.Embed(title = 'Bulk Message Deletion', 
-                            description = f'{messages} messages were deleted from {ctx.channel.name} by {ctx.author.name}#{ctx.author.discriminator}',
+
+        embed = discord.Embed(title = 'Bulk Message Deletion',
+                            description = f'{messages} messages were deleted \
+                                from {ctx.channel.name} by {ctx.author.name}#{ctx.author.discriminator}',
                             colour = config.ORANGE)
         embed.set_footer(text=config.FOOTER)
-        
+
         await channel.send(content=None, embed=embed)
 
 
@@ -875,7 +908,7 @@ class ModerationSlash(commands.Cog):
     async def slowmode(self, ctx: SlashContext, channel: discord.TextChannel, seconds: int):
         try:
             await channel.edit(slowmode_delay = seconds)
-            
+
             if seconds == 0:
                 await ctx.send(embed = discord.Embed(
                     title = f'Slowmode disabled for {channel}',

@@ -17,8 +17,8 @@ class Users(commands.Cog):
     async def help(self, ctx):
 
         await ctx.send(embed = discord.Embed(title = 'Type / to see the list of available commands'))
-        
-        
+
+
     # Answer to command !roles
     @commands.command(name='roles', brief=config.ROLES_BRIEF)
     # 1 usage every 30 seconds per channel
@@ -26,7 +26,7 @@ class Users(commands.Cog):
     @commands.guild_only()
     async def roles(self, ctx):
 
-        role = ctx.guild.get_role(config.MOD_ID) 
+        role = ctx.guild.get_role(config.MOD_ID)
 
         if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
             await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
@@ -70,7 +70,8 @@ class Users(commands.Cog):
         else:
             answer = config.FAQ
 
-            embed = discord.Embed(title='Fequently Asked Questions', description=answer, colour=config.BLUE)
+            embed = discord.Embed(title='Fequently Asked Questions',
+                description=answer, colour=config.BLUE)
             embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
             embed.set_footer(text=config.FOOTER)
             await ctx.send(content=None, embed=embed)
@@ -86,9 +87,9 @@ class Users(commands.Cog):
         if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
             await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
         else:
-            if (ctx.message.author.id == config.TOXY_ID):
+            if ctx.message.author.id == config.TOXY_ID:
                 await ctx.reply("Stop using this command constantly, toxy")
-            elif (ctx.message.author.id == config.GOOZ_ID):
+            elif ctx.message.author.id == config.GOOZ_ID:
                 await ctx.message.author.add_roles(config.MUTE_ID)
                 await ctx.reply("Stop using this command constantly, gooz")
                 await asyncio.sleep(20)
@@ -107,14 +108,19 @@ class Users(commands.Cog):
         # Gooz keeps using this command every day
         if member.id == config.GOOZ_ID:
             await ctx.reply('Stop using this command, gooz')
+            muted = ctx.guild.get_role(config.MUTE_ID)
+            await member.add_roles(muted)
+            await asyncio.sleep(30)
+            await member.remove_roles(muted)
             return
 
-        embed = discord.Embed(title=f'Information on {member.name}#{member.discriminator}', colour = member.colour)
+        embed = discord.Embed(title=f'Information on {member.name}#{member.discriminator}',
+            colour = member.colour)
         embed.set_thumbnail(url = member.avatar_url)
 
         # Account age
         creation_date = member.created_at.strftime('%b-%d-%Y')
-        
+
         #Last join
         joined = ctx.message.author.joined_at.strftime('%b-%d-%Y')
 
