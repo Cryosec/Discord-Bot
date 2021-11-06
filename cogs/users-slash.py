@@ -72,6 +72,16 @@ class UsersSlash(commands.Cog):
         embed.set_footer(text=config.FOOTER)
         await ctx.send(content=None, embed=embed)
 
+    # /merch command
+    @cog_ext.cog_slash(
+        name = "merch",
+        description = config.MERCH_BRIEF,
+        guild_ids = [config.GUILD]
+    )
+    async def merch(self, ctx: SlashContext):
+        """Return information on OperatorDrewski's merch."""
+        await ctx.reply("You can find Operator Drewski's merch at this link:\n https://bunkerbranding.com/pages/operator-drewski")
+
 
     # /me Command
     @commands.cooldown(1, 86400, commands.BucketType.member)

@@ -76,6 +76,14 @@ class Users(commands.Cog):
             embed.set_footer(text=config.FOOTER)
             await ctx.send(content=None, embed=embed)
 
+    @commands.command(name="merch")
+    @commands.cooldown(1, 30, commands.BucketType.channel)
+    @commands.guild_only()
+    async def merch(self, ctx):
+        """Return the URL with Operator Drewski's merch website."""
+        await ctx.reply("You can find Operator Drewski's merch at this link:\n https://bunkerbranding.com/pages/operator-drewski")
+
+
     # Answer to command !joined
     ### CHANGED WITH !me ###
     #@commands.command(name="joined", brief=JOINED_BRIEF)
