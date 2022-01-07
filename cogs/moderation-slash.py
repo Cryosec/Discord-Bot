@@ -674,7 +674,7 @@ class ModerationSlash(commands.Cog):
         messages: Option(int, "Number of messages to delete", required = True)
     ):
         """Deleted the specified amount of messages from the current channel."""
-        await ctx.respond("Deleteing", ephemeral = True)
+        await ctx.respond("Deleting", ephemeral = True)
         await ctx.channel.purge(limit= messages)
 
         channel = ctx.guild.get_channel(config.LOG_CHAN)

@@ -4,9 +4,6 @@ from datetime import datetime, timezone
 import pytz, shelve
 import discord
 from discord.ext import commands
-#from interactions import ComponentContext
-#from interactions.utils.manage_components import create_button, create_actionrow, wait_for_component
-#from interactions.model import ButtonStyle
 import config
 import support
 
@@ -109,7 +106,7 @@ class Events(commands.Cog):
             new_embed.set_author(name = self.bot.user.name, icon_url = self.bot.user.avatar.url)
             new_embed.add_field(name = 'Ban reason', value = ban_entry.reason, inline = False)
             new_embed.add_field(name = 'Timestamp', value = now.strftime(TIME_FORMAT))
-            await button_ctx.edit_origin(embed=new_embed, view=None)
+            await unban_button.edit_original_message(embed=new_embed, view=None)
 
 
 

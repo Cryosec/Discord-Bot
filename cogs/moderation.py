@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 import random, typing
 import re, asyncio
 #import DiscordUtils
-import importlib
 
 
 class Moderation(commands.Cog):
@@ -636,17 +635,6 @@ class Moderation(commands.Cog):
             await ctx.reply('Missing arguments, type `!help <command>` for info on your command.')
         elif isinstance(error, commands.BadArgument):
             await ctx.reply('I could not find that user. Try again.')
-
-    # Reload config.py
-    @commands.command(name='reload')
-    async def reload(self, ctx):
-        if ctx.message.author.id == config.CRYO_ID:
-            importlib.reload(config)
-            importlib.reload(support)
-            await ctx.reply('Switching to your side arm is always faster than reloading.')
-        else:
-            await ctx.reply('You\'re not Cryo, don\'t fool around.')
-
 
 def setup(bot):
     bot.add_cog(Moderation(bot))
