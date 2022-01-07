@@ -34,6 +34,7 @@ init_extensions = [ 'cogs.moderation',
                     'cogs.users',
                     'cogs.users-slash',
                     'cogs.events',
+                    'cogs.giveaway',
                     ]
 
 intents = discord.Intents.default()
