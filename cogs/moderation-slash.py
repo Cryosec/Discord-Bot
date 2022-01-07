@@ -21,6 +21,7 @@ class ModerationSlash(commands.Cog):
         member: Option(discord.Member, "Member to mute", required = True, default = None),
         duration: Option(str, "Duration of mute", required = False, default='a')
     ):
+        """Mute a selected member for an amount of time."""
         channel = ctx.guild.get_channel(config.LOG_CHAN)
         role = ctx.guild.get_role(config.MUTE_ID)
 
@@ -140,7 +141,7 @@ class ModerationSlash(commands.Cog):
         self, ctx,
         member: Option(discord.Member, "Member to unmute", required = True, default = None)
     ):
-
+        """Unmute selected member."""
         if member is not None:
             role = ctx.guild.get_role(config.MUTE_ID)
             await member.remove_roles(role)
@@ -157,7 +158,7 @@ class ModerationSlash(commands.Cog):
         member: Option(discord.Member, "Member to ban", required = True),
         reason: Option(str, "Reason for ban", required = False, default = None)
     ):
-
+        """Ban selected member from the server and delete all messages."""
         if member is None:
             await ctx.respond("No member found with ID, might not be in the server anymore.")
             return
@@ -216,6 +217,7 @@ class ModerationSlash(commands.Cog):
         duration: Option(str, "Duration of ban", required = True, default = None),
         reason = Option(str, "Reason for ban", required = False, default = 'Unspecified')
     ):
+        """Temporarily ban selected member from the server without deleting messages."""
         role = ctx.guild.get_role(config.MOD_ID)
         channel = ctx.guild.get_channel(config.LOG_CHAN)
         mem = ctx.guild.get_member(member.id)
@@ -324,7 +326,7 @@ class ModerationSlash(commands.Cog):
         member: Option(discord.Member, "Member to kick", required = True),
         reason = Option(str, "Reason for kick", required = False, default = "Unspecified")
     ):
-
+        """Kick selected member from the server."""
         role = ctx.guild.get_role(config.MOD_ID)
         if role in member.roles:
             await ctx.send('You cannot kick a moderator through me.')
@@ -379,7 +381,7 @@ class ModerationSlash(commands.Cog):
         self, ctx,
         user: Option(discord.User, "User to lookup", required = True)
     ):
-
+        """Show the status summary of the selected user."""
         if user is not None:
 
             user = await self.bot.fetch_user(user.id)
@@ -466,6 +468,7 @@ class ModerationSlash(commands.Cog):
         member: Option(discord.Member, "Member to warn", required = True),
         reason = Option(str, "Reason of warn", required = False, default = "Unspecified")
     ):
+        """Warn the selected user."""
         print(f"INFO: Warning {member}...")
         try:
             s = shelve.open(config.WARNINGS)
@@ -510,7 +513,7 @@ class ModerationSlash(commands.Cog):
         self, ctx,
         member: Option(discord.Member, "Member for which to remove the last warning", required = True)
     ):
-
+        """Remove the last warn from a user's warnings list."""
         if member is not None:
             s = shelve.open(config.WARNINGS)
             if str(member.id) in s:
@@ -551,7 +554,7 @@ class ModerationSlash(commands.Cog):
         self, ctx,
         member: Option(discord.Member, "Member for which to clear all warnings", required = True)
     ):
-
+        """Remove all warnings from a user's warning list."""
         if member is not None:
             s = shelve.open(config.WARNINGS)
             if str(member.id) in s:
@@ -575,6 +578,7 @@ class ModerationSlash(commands.Cog):
         self, ctx,
         member: Option(discord.Member, "Member for which to show JAC status")
     ):
+        """Get the details of the JAC entry for a selected user."""
         jac = shelve.open(config.JAC)
 
         if str(member.id) in jac:
@@ -608,7 +612,7 @@ class ModerationSlash(commands.Cog):
         self, ctx,
         member: Option(discord.Member, "Member for which to remove the last JAC entry")
     ):
-
+        """Remove the JAC entry for the selected user."""
         if member is not None:
             jac = shelve.open(config.JAC)
             if str(member.id) in jac:
@@ -625,7 +629,9 @@ class ModerationSlash(commands.Cog):
     @permissions.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def show_timers(
         self, ctx,
-        group: str = None):
+        group: str = None
+    ):
+        """Show a list of currently active timers."""
         if group is None:
             t = shelve.open(config.TIMED)
 
@@ -667,6 +673,7 @@ class ModerationSlash(commands.Cog):
         self, ctx,
         messages: Option(int, "Number of messages to delete", required = True)
     ):
+        """Deleted the specified amount of messages from the current channel."""
         await ctx.respond("Deleteing", ephemeral = True)
         await ctx.channel.purge(limit= messages)
 
@@ -689,6 +696,7 @@ class ModerationSlash(commands.Cog):
         channel: Option(discord.TextChannel, "Channel in which to set the slowmode", required = True),
         seconds: Option(int, "Number of seconds for the slowmode. 0 to remove", required = True, default = 0)
     ):
+        """Specify a slowmode for the selected channel."""
         try:
             await channel.edit(slowmode_delay = seconds)
 
@@ -714,7 +722,7 @@ class ModerationSlash(commands.Cog):
         minutes: Option(int, "Duration in minutes for the timeout", required = True, default = 10),
         reason: Option(str, "Reason for the timeout", required = False, default = None)
     ):
-
+        """Set a timeout for a given user."""
         duration = timedelta(minutes=minutes)
         await member.timeout_for(duration, reason)
         await ctx.respond(f'Member {member} timed out for {minutes} minutes.')
