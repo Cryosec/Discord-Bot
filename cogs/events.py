@@ -72,7 +72,7 @@ class Events(commands.Cog):
                 author = entry.user
 
         # Add 'unban' button under each ban embed
-        unban_button = support.Unban(user.id)
+        unban_button = support.Unban()
 
         # Create embed to log the banning
         embed = discord.Embed(title = 'User Ban',

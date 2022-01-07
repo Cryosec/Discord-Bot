@@ -17,7 +17,7 @@ class Users(commands.Cog):
     @commands.guild_only()
     async def help(self, ctx):
 
-        await ctx.send(embed = discord.Embed(title = 'Type / to see the list of available commands'))
+        await ctx.reply(embed = discord.Embed(title = 'Type / to see the list of available commands'))
 
 
     # Answer to command !roles
@@ -37,7 +37,7 @@ class Users(commands.Cog):
             embed = discord.Embed(title='Roles information', description=answer, colour=config.BLUE)
             embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
             embed.set_footer(text=config.FOOTER)
-            await ctx.send(content=None, embed=embed)
+            await ctx.reply(content=None, embed=embed)
 
     # Answer to command !twitch
     @commands.command(name='twitch', brief=config.TWITCH_BRIEF)
@@ -55,7 +55,7 @@ class Users(commands.Cog):
             embed = discord.Embed(title='Twitch information', url=config.TWTICH_URL, description=answer, colour=config.PURPLE)
             embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
             embed.set_footer(text=config.FOOTER)
-            await ctx.send(content=None, embed=embed)
+            await ctx.reply(content=None, embed=embed)
 
 
     # Answer to command !faq
@@ -75,7 +75,7 @@ class Users(commands.Cog):
                 description=answer, colour=config.BLUE)
             embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
             embed.set_footer(text=config.FOOTER)
-            await ctx.send(content=None, embed=embed)
+            await ctx.reply(content=None, embed=embed)
 
     @commands.command(name="merch")
     @commands.cooldown(1, 30, commands.BucketType.channel)
@@ -85,35 +85,13 @@ class Users(commands.Cog):
         await ctx.reply("You can find Operator Drewski's merch at this link:\n https://bunkerbranding.com/pages/operator-drewski")
 
 
-    # Answer to command !joined
-    ### CHANGED WITH !me ###
-    #@commands.command(name="joined", brief=JOINED_BRIEF)
-    #@commands.cooldown(1, 60, commands.BucketType.member)
-    #@commands.guild_only()
-    async def joined(self, ctx):
-        role = ctx.guild.get_role(config.MOD_ID)
-
-        if(ctx.message.channel.id != config.UCMD_CHAN) and role not in ctx.message.author.roles:
-            await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
-        else:
-            if ctx.message.author.id == config.TOXY_ID:
-                await ctx.reply("Stop using this command constantly, toxy")
-            elif ctx.message.author.id == config.GOOZ_ID:
-                await ctx.message.author.add_roles(config.MUTE_ID)
-                await ctx.reply("Stop using this command constantly, gooz")
-                await asyncio.sleep(20)
-                await ctx.message.author.remove_roles(config.MUTE_ID)
-            else:
-                timestamp = ctx.message.author.joined_at.strftime('%b-%d-%Y')
-                await ctx.reply(f"You have joined the server on {timestamp}")
-
     # Anser to command !me
     @commands.command(name="me", brief=config.ME_BRIEF)
-    @commands.cooldown(1, 86400, commands.BucketType.member)
+    #@commands.cooldown(1, 86400, commands.BucketType.member)
     @commands.guild_only()
     async def me(self, ctx):
         member = ctx.message.author
-
+        
         # Gooz keeps using this command every day
         if member.id == config.GOOZ_ID:
             await ctx.reply('Stop using this command, gooz')
@@ -125,7 +103,7 @@ class Users(commands.Cog):
 
         embed = discord.Embed(title=f'Information on {member.name}#{member.discriminator}',
             colour = member.colour)
-        embed.set_thumbnail(url = member.avatar_url)
+        embed.set_thumbnail(url = member.avatar.url)
 
         # Account age
         creation_date = member.created_at.strftime('%b-%d-%Y')
@@ -149,7 +127,7 @@ class Users(commands.Cog):
         embed.add_field(name='Boosting since', value=boosting, inline=False)
         embed.add_field(name='Roles', value = role_list, inline=False)
 
-        embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
+        embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
 
         await ctx.reply(embed=embed)

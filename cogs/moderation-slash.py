@@ -705,5 +705,20 @@ class ModerationSlash(commands.Cog):
         except:
             print(f'Error setting slowmode for channel {channel}')
 
+    # /timeout command
+    @slash_command(guild_ids=[config.GUILD], name='timeout', default_permission = False)
+    @permissions.has_any_role(config.MOD_ID, config.ADMIN_ID)
+    async def timeout(
+        self, ctx,
+        member: Option(discord.Member, "Member to timeout", required = True),
+        minutes: Option(int, "Duration in minutes for the timeout", required = True, default = 10),
+        reason: Option(str, "Reason for the timeout", required = False, default = None)
+    ):
+
+        duration = datetime.timedelta(minutes=minutes)
+        await member.timeout_for(duration, reason)
+        await ctx.respond(f'Member {member} timed out for {minutes} minutes.')
+
+
 def setup(bot):
     bot.add_cog(ModerationSlash(bot))

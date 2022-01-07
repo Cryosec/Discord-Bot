@@ -2,6 +2,7 @@
 import discord
 from discord.ext import commands
 import config
+import support
 import shelve, pytz
 from datetime import datetime, timedelta
 import random, typing
@@ -422,7 +423,7 @@ class Moderation(commands.Cog):
     async def tempban_user(self, ctx, member: typing.Optional[discord.User], duration: str = None, *, reason = 'Unspecified'):
         role = ctx.guild.get_role(config.MOD_ID)
         channel = ctx.guild.get_channel(config.LOG_CHAN)
-        mem = ctx.guild.get_member(member.id)
+        mem = await bot.fetch_user(member.id)
 
         if role in mem.roles:
             await ctx.send('You cannot ban a moderator through me.')
@@ -641,6 +642,7 @@ class Moderation(commands.Cog):
     async def reload(self, ctx):
         if ctx.message.author.id == config.CRYO_ID:
             importlib.reload(config)
+            importlib.reload(support)
             await ctx.reply('Switching to your side arm is always faster than reloading.')
         else:
             await ctx.reply('You\'re not Cryo, don\'t fool around.')

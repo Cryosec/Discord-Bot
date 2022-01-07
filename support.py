@@ -58,7 +58,7 @@ class Scam(discord.ui.View):
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.green)
-    async def ban(
+    async def cancel(
         self, button: discord.ui.Button, interaction: discord.Interaction
     ):
         await interaction.resposne.send_message("Cancelling", ephemeral=True)

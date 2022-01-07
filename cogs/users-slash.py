@@ -79,7 +79,7 @@ class UsersSlash(commands.Cog):
 
         embed = discord.Embed(title=f'Information on {member.name}#{member.discriminator}',
             colour = member.colour)
-        embed.set_thumbnail(url = member.avatar_url)
+        embed.set_thumbnail(url = member.avatar.url)
 
         # Account age
         creation_date = member.created_at.strftime('%b-%d-%Y')
@@ -103,7 +103,7 @@ class UsersSlash(commands.Cog):
         embed.add_field(name='Boosting since', value=boosting, inline=False)
         embed.add_field(name='Roles', value = role_list, inline=False)
 
-        embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
+        embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
 
         await ctx.respond(embed=embed)
@@ -117,7 +117,7 @@ class UsersSlash(commands.Cog):
             await ctx.respond('Don\t be daft. Mods can\'t play.')
             return
 
-        num = random.random(1, 6)
+        num = random.randint(1, 6)
         if num == 1:
             await ctx.respond("*Bang*")
             await ctx.guild.ban(ctx.author, reason = "Russian roulette loser.")
