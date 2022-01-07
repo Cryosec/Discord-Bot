@@ -7,7 +7,7 @@ import shelve, pytz
 from dotenv import load_dotenv
 import discord
 from discord.ext import commands, tasks
-#from cogwatch import Watcher
+from cogwatch import Watcher
 import config
 import support
 
@@ -19,11 +19,11 @@ handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(me
 log.addHandler(handler)
 
 # cogwatch logger
-#watch_log = logging.getLogger('cogwatch')
-#watch_log.setLevel(logging.INFO)
-#watch_handler = logging.FileHandler(filename='cogwatch.log', encoding='utf-8', mode='w')
-#watch_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
-#watch_log.addHandler(watch_handler)
+watch_log = logging.getLogger('cogwatch')
+watch_log.setLevel(logging.INFO)
+watch_handler = logging.FileHandler(filename='cogwatch.log', encoding='utf-8', mode='w')
+watch_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+watch_log.addHandler(watch_handler)
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -120,16 +120,23 @@ async def check_ban_timers(now, time_db, guild, channel, mem):
 
         await channel.send(content=None, embed=embed)
 
-        await guild.unban(user)
+        try:
+            await guild.unban(user)
+        except:
+            print('Error while executing timed unban')
         time_db[mem]['ban'] = False
         time_db[mem]['endBan'] = None
         time_db.sync()
     # Re-add the timer to the list -- this could cause duplicate timers
     elif ban_time > now:
+        user = await bot.fetch_user(int(mem))
         print(f'\nUser {mem} is tempbanned. Adding to wait...')
         time_db.close()
         await asyncio.sleep((ban_time - now).total_seconds())
-        await guild.unban(user)
+        try:
+            await guild.unban(user)
+        except:
+            print('Error while executing timed unban')
         time_db = shelve.open(config.TIMED)
         time_db[mem]['ban'] = False
         time_db[mem]['endBan'] = None
@@ -181,8 +188,8 @@ async def check_timers():
 @bot.event
 async def on_ready():
     """Function called when bot is ready to operate, starts cogwatcher and tasks."""
-    #watcher = Watcher(bot, path='cogs')
-    #await watcher.start()
+    watcher = Watcher(bot, path='cogs')
+    await watcher.start()
 
     # Register persistent views for listening
     #if not self.persistent_views_added:
