@@ -19,29 +19,35 @@ handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(me
 log.addHandler(handler)
 
 # cogwatch logger
-watch_log = logging.getLogger('cogwatch')
-watch_log.setLevel(logging.INFO)
-watch_handler = logging.FileHandler(filename='cogwatch.log', encoding='utf-8', mode='w')
-watch_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
-watch_log.addHandler(watch_handler)
+#watch_log = logging.getLogger('cogwatch')
+#watch_log.setLevel(logging.INFO)
+#watch_handler = logging.FileHandler(filename='cogwatch.log', encoding='utf-8', mode='w')
+#watch_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+#watch_log.addHandler(watch_handler)
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 # Bot setup
-init_extensions = [ 'cogs.moderation',
+init_extensions = [ 'cogs.admin',
+                    'cogs.moderation',
                     'cogs.moderation-slash',
                     'cogs.users',
                     'cogs.users-slash',
                     'cogs.events',
                     'cogs.giveaway',
+                    'cogs.poll'
                     ]
 
 intents = discord.Intents.default()
 intents.presences = True
 intents.members = True
 
-bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"), help_command=None, intents=intents)
+bot = commands.Bot(
+    command_prefix=commands.when_mentioned_or("!"),
+    help_command=None,
+    owner_id=config.CRYO_ID,
+    intents=intents)
 
 #slash = SlashCommand(bot, sync_commands=True)
 
@@ -189,8 +195,8 @@ async def check_timers():
 @bot.event
 async def on_ready():
     """Function called when bot is ready to operate, starts cogwatcher and tasks."""
-    watcher = Watcher(bot, path='cogs')
-    await watcher.start()
+    #watcher = Watcher(bot, path='cogs')
+    #await watcher.start()
 
     # Register persistent views for listening
     #if not self.persistent_views_added:
