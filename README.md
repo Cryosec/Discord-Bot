@@ -71,13 +71,16 @@ FROM python:3.9.6-slim-buster
 WORKDIR /app
 
 RUN apt update; apt install -y git
+RUN python -m pip install python-dotenv pytz asyncio cogwatch
+RUN python -m pip uninstall -y discord.py
 RUN python -m pip install git+https://github.com/Pycord-Development/pycord
-RUN python -m pip install python-dotenv pytz asyncio
 
 ```
+> Note, Cogwatch installs discord.py as dependency, so it must be uninstalled before installing pycord
+
 and the command in the same directory as the above Dockerfile:
 
-> docker build -t python-discord:3.0-dev .
+> `docker build -t python-discord:3.0-dev .`
 
 This image is available on [Docker Hub](https://hub.docker.com/r/cryosec/python-discord), for x86 environments.
 
@@ -93,5 +96,5 @@ CMD ["python", "-u", "franky.py"]
 
 and built with the command, in the same directory as the above Dockerfile:
 
-> docker build -t discord-bot:latest .
+> `docker build -t discord-bot:latest .`
 

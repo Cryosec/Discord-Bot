@@ -270,7 +270,7 @@ class Moderation(commands.Cog):
                     embed.set_footer(text=config.FOOTER)
 
                 s.close()
-                await ctx.respond(content=None, embed=embed)
+                await ctx.reply(content=None, embed=embed)
 
             else:
                 s = shelve.open(config.WARNINGS)
@@ -285,7 +285,7 @@ class Moderation(commands.Cog):
                     embed.set_footer(text=config.FOOTER)
 
                     s.close()
-                    await ctx.respond(content=None, embed=embed)
+                    await ctx.reply(content=None, embed=embed)
                 else:
                     embed = discord.Embed(title = f'Status of user {user}',
                                         description = '**User is not part of the server.**',
@@ -296,10 +296,10 @@ class Moderation(commands.Cog):
                     embed.add_field(name = 'Joined:', value = 'N/A')
                     embed.set_footer(text=config.FOOTER)
 
-                    await ctx.respond(content=None, embed=embed)
+                    await ctx.reply(content=None, embed=embed)
 
         else:
-            await ctx.respond('Something went wrong')
+            await ctx.reply('Something went wrong')
 
     # !timers = return all current timed events
     @commands.command(name='timers')

@@ -7,7 +7,7 @@
 /jac_log*
 /pretty_help
 /read_dbs.py
-/todo
+/todo.md
 /warnings.db
 /cogs/__pycache__
 /base

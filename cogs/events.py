@@ -361,7 +361,7 @@ async def scam_check_embed(self, message, filtered_url):
             new_embed.add_field(name = 'Join date', value = message.author.joined_at.strftime(TIME_FORMAT))
             new_embed.add_field(name = 'Creation date', value = message.author.created_at.strftime(TIME_FORMAT))
 
-            await button_ctx.edit_origin(embed=new_embed, view=None)
+            await ban_button.edit_original_message(embed=new_embed, view=None)
             await message.author.ban(reason = f'Spam message confirmed by {ban_button.user}', delete_message_days=0)
             try:
                 config.SCAM.remove(filtered_url)
@@ -382,7 +382,7 @@ async def scam_check_embed(self, message, filtered_url):
         new_embed.add_field(name = 'Join date', value = message.author.joined_at.strftime(TIME_FORMAT))
         new_embed.add_field(name = 'Creation date', value = message.author.created_at.strftime(TIME_FORMAT))
 
-        await button_ctx.edit_origin(embed=new_embed, view=None)
+        await ban_button.edit_original_message(embed=new_embed, view=None)
         try:
             config.SCAM.remove(filtered_url)
         except:

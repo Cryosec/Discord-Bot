@@ -715,7 +715,7 @@ class ModerationSlash(commands.Cog):
         reason: Option(str, "Reason for the timeout", required = False, default = None)
     ):
 
-        duration = datetime.timedelta(minutes=minutes)
+        duration = timedelta(minutes=minutes)
         await member.timeout_for(duration, reason)
         await ctx.respond(f'Member {member} timed out for {minutes} minutes.')
 

@@ -49,19 +49,19 @@ class Scam(discord.ui.View):
         self.value = None
         self.url = url
 
-    @discord.ui.button(label="Ban", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Ban", style=discord.ButtonStyle.red)
     async def ban(
         self, button: discord.ui.Button, interaction: discord.Interaction
     ):
-        await interaction.resposne.send_message("Banning", ephemeral=True)
+        await interaction.response.send_message("Banning", ephemeral=True)
         self.value = True
         self.stop()
 
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.grey)
     async def cancel(
         self, button: discord.ui.Button, interaction: discord.Interaction
     ):
-        await interaction.resposne.send_message("Cancelling", ephemeral=True)
+        await interaction.response.send_message("Cancelling", ephemeral=True)
         self.value = False
         self.stop()
 
