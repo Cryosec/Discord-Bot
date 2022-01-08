@@ -5,19 +5,64 @@ from discord.ext import commands
 from discord.commands import slash_command, Option
 import config
 
-### CONSTANTS ###
-
 class Users(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     # Answer to command !help
     @commands.command(name='help')
-    #@commands.cooldown(1, 30, commands.BucketType.channel)
+    @commands.cooldown(1, 30, commands.BucketType.channel)
     @commands.guild_only()
-    async def help(self, ctx):
+    async def help(self, ctx, command: str = None):
 
-        await ctx.reply(embed = discord.Embed(title = 'Type / to see the list of available commands'))
+        role = ctx.guild.get_role(config.MOD_ID)
+        # if message author is a moderator
+        if role in ctx.message.author.roles:
+            if command is None:
+                answer = config.HELP_INFO_MOD
+
+                embed = discord.Embed(title='Commands information', description=answer, colour=config.BLUE)
+                embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+                embed.set_footer(text=config.FOOTER)
+                await ctx.reply(embed=embed)
+            else:
+                def f(x):
+                    return {
+                        'mute': config.HELP_MUTE,
+                        'unmute': config.HELP_UNMUTE,
+                        'warn': config.HELP_WARN,
+                        'unwarn': config.HELP_UNWARN,
+                        #'warns': config.HELP_WARNINGS,
+                        'cwarn': config.HELP_CLEAR,
+                        'delete': config.HELP_DELETE,
+                        'status': config.HELP_STATUS,
+                        'kick': config.HELP_KICK,
+                        'ban': config.HELP_BAN,
+                        'tempban': config.HELP_TEMPBAN,
+                        'timers': config.HELP_TIMERS,
+                        'jac': config.HELP_JAC,
+                        'giveaway': config.HELP_GA,
+                        'users': config.HELP_INFO_USER,
+                    }[x]
+                answer = f(command)
+
+                embed = discord.Embed(title='Command information', description=answer, colour=config.BLUE)
+                embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+                embed.set_footer(text=config.FOOTER)
+                await ctx.reply(embed=embed)
+
+        # if message author is not a moderator
+        else:
+
+            if ctx.message.channel.id != config.UCMD_CHAN:
+                await ctx.reply(f'Use <#{config.UCMD_CHAN}> for bot commands.')
+            else:
+                answer = config.HELP_INFO_USER
+
+                embed = discord.Embed(title='Commands information', description=answer, colour=config.BLUE)
+                embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+                embed.set_footer(text=config.FOOTER)
+                await ctx.send(embed=embed)
 
 
     # Answer to command !roles
@@ -35,7 +80,7 @@ class Users(commands.Cog):
             answer = config.ROLES_INFO
 
             embed = discord.Embed(title='Roles information', description=answer, colour=config.BLUE)
-            embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
+            embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
             embed.set_footer(text=config.FOOTER)
             await ctx.reply(content=None, embed=embed)
 
@@ -53,7 +98,7 @@ class Users(commands.Cog):
             answer = config.TWITCH_INFO
 
             embed = discord.Embed(title='Twitch information', url=config.TWTICH_URL, description=answer, colour=config.PURPLE)
-            embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
+            embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
             embed.set_footer(text=config.FOOTER)
             await ctx.reply(content=None, embed=embed)
 
@@ -73,10 +118,11 @@ class Users(commands.Cog):
 
             embed = discord.Embed(title='Fequently Asked Questions',
                 description=answer, colour=config.BLUE)
-            embed.set_author(icon_url=self.bot.user.avatar_url, name=self.bot.user.name)
+            embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
             embed.set_footer(text=config.FOOTER)
             await ctx.reply(content=None, embed=embed)
 
+    # Answer to command !merch
     @commands.command(name="merch")
     @commands.cooldown(1, 30, commands.BucketType.channel)
     @commands.guild_only()
@@ -91,7 +137,7 @@ class Users(commands.Cog):
     @commands.guild_only()
     async def me(self, ctx):
         member = ctx.message.author
-        
+
         # Gooz keeps using this command every day
         if member.id == config.GOOZ_ID:
             await ctx.reply('Stop using this command, gooz')
