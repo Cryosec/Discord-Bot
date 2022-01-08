@@ -28,7 +28,7 @@ class Confirm(discord.ui.View):
 # Define a view with an Unban button
 class Unban(discord.ui.View):
     def __init__(self):
-        super().__init__()
+        super().__init__(timeout=None)
         self.value = None
         self.user = None
 
@@ -48,6 +48,7 @@ class Scam(discord.ui.View):
         super().__init__(timeout=None)
         self.value = None
         self.url = url
+        self.user = None
 
     @discord.ui.button(label="Ban", style=discord.ButtonStyle.red)
     async def ban(
@@ -55,6 +56,7 @@ class Scam(discord.ui.View):
     ):
         await interaction.response.send_message("Banning", ephemeral=True)
         self.value = True
+        self.user = interaction.user
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.grey)
@@ -63,7 +65,22 @@ class Scam(discord.ui.View):
     ):
         await interaction.response.send_message("Cancelling", ephemeral=True)
         self.value = False
+        self.user = interaction.user
         self.stop()
+
+class BanButton(discord.ui.Button):
+    def __init__(self, button_id):
+        super().__init__(
+            label='Ban',
+            style=discord.ButtonStyle.red,
+            custom_id='ban'+button_id
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+
+        # Who pressed the button
+        user = interaction.user
+
 
 
 # Defines a custom Select containing colour options
