@@ -31,6 +31,7 @@ class Unban(discord.ui.View):
         super().__init__(timeout=None)
         self.value = None
         self.user = None
+        self.interaction = None
 
     @discord.ui.button(label="Unban", style=discord.ButtonStyle.red)
     async def unban(
@@ -39,6 +40,7 @@ class Unban(discord.ui.View):
         await interaction.response.send_message("Unbanning", ephemeral=True)
         self.value = True
         self.user = interaction.user
+        self.interaction = interaction
         self.stop()
 
 
@@ -49,6 +51,7 @@ class Scam(discord.ui.View):
         self.value = None
         self.url = url
         self.user = None
+        self.interaction = None
 
     @discord.ui.button(label="Ban", style=discord.ButtonStyle.red)
     async def ban(
@@ -57,6 +60,7 @@ class Scam(discord.ui.View):
         await interaction.response.send_message("Banning", ephemeral=True)
         self.value = True
         self.user = interaction.user
+        self.interaction = interaction
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.grey)
@@ -66,6 +70,7 @@ class Scam(discord.ui.View):
         await interaction.response.send_message("Cancelling", ephemeral=True)
         self.value = False
         self.user = interaction.user
+        self.interaction = interaction
         self.stop()
 
 class BanButton(discord.ui.Button):

@@ -106,8 +106,7 @@ class Events(commands.Cog):
             new_embed.set_author(name = self.bot.user.name, icon_url = self.bot.user.avatar.url)
             new_embed.add_field(name = 'Ban reason', value = ban_entry.reason, inline = False)
             new_embed.add_field(name = 'Timestamp', value = now.strftime(TIME_FORMAT))
-            await unban_button.edit_original_message(embed=new_embed, view=None)
-
+            await unban_button.interaction.edit_original_message(embed=new_embed, view=None)
 
 
     # But there is no on_member_kick. oof
@@ -281,7 +280,7 @@ async def check_scam(self, message):
                     log('INFO: nitro scam blocked.')
                     await scam_check_embed(self, message, scam_link.group("url"))
 
-            except discord.errors.NotFound:
+            except:
                 log('INFO: Message not found.')
 
         # normal url scam check
@@ -294,7 +293,7 @@ async def check_scam(self, message):
                     log('INFO: general scam blocked.')
                     await scam_check_embed(self, message, scam_link.group("url"))
 
-            except discord.errors.NotFound:
+            except:
                 log('INFO: message not found.')
     else:
         # discord nitro scam, aggressive check pt.2
@@ -358,7 +357,7 @@ async def scam_check_embed(self, message, filtered_url):
             new_embed.add_field(name = 'Join date', value = message.author.joined_at.strftime(TIME_FORMAT))
             new_embed.add_field(name = 'Creation date', value = message.author.created_at.strftime(TIME_FORMAT))
 
-            await ban_button.edit_original_message(embed=new_embed, view=None)
+            await ban_button.interaction.edit_original_message(embed=new_embed, view=None)
             await message.author.ban(reason = f'Spam message confirmed by {ban_button.user}', delete_message_days=0)
             try:
                 config.SCAM.remove(filtered_url)
@@ -379,7 +378,7 @@ async def scam_check_embed(self, message, filtered_url):
         new_embed.add_field(name = 'Join date', value = message.author.joined_at.strftime(TIME_FORMAT))
         new_embed.add_field(name = 'Creation date', value = message.author.created_at.strftime(TIME_FORMAT))
 
-        await ban_button.edit_original_message(embed=new_embed, view=None)
+        await ban_button.interaction.edit_original_message(embed=new_embed, view=None)
         try:
             config.SCAM.remove(filtered_url)
         except:
