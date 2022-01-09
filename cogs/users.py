@@ -11,7 +11,7 @@ class Users(commands.Cog):
 
     # Answer to command !help
     @commands.command(name='help')
-    @commands.cooldown(1, 30, commands.BucketType.channel)
+    #@commands.cooldown(1, 30, commands.BucketType.channel)
     @commands.guild_only()
     async def help(self, ctx, command: str = None):
 
@@ -32,7 +32,6 @@ class Users(commands.Cog):
                         'unmute': config.HELP_UNMUTE,
                         'warn': config.HELP_WARN,
                         'unwarn': config.HELP_UNWARN,
-                        #'warns': config.HELP_WARNINGS,
                         'cwarn': config.HELP_CLEAR,
                         'delete': config.HELP_DELETE,
                         'status': config.HELP_STATUS,
@@ -43,6 +42,7 @@ class Users(commands.Cog):
                         'jac': config.HELP_JAC,
                         'giveaway': config.HELP_GA,
                         'users': config.HELP_INFO_USER,
+                        'poll': config.HELP_POLL,
                     }[x]
                 answer = f(command)
 
