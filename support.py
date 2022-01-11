@@ -1,5 +1,5 @@
+# pylint: disable=F0401, W0703, unused-argument, unused-variable
 import discord
-from discord.ext import commands
 
 # Define a simple view with two buttons, confirm and cancel
 class Confirm(discord.ui.View):
@@ -34,9 +34,7 @@ class Unban(discord.ui.View):
         self.interaction = None
 
     @discord.ui.button(label="Unban", style=discord.ButtonStyle.red)
-    async def unban(
-        self, button: discord.ui.Button, interaction: discord.Interaction
-    ):
+    async def unban(self, button: discord.ui.Button, interaction: discord.Interaction):
         await interaction.response.send_message("Unbanning", ephemeral=True)
         self.value = True
         self.user = interaction.user
@@ -51,12 +49,10 @@ class Scam(discord.ui.View):
         self.value = None
         self.url = url
         self.user = None
-        self.interaction = None
+        self.inter = None
 
     @discord.ui.button(label="Ban", style=discord.ButtonStyle.red)
-    async def ban(
-        self, button: discord.ui.Button, interaction: discord.Interaction
-    ):
+    async def ban(self, button: discord.ui.Button, interaction: discord.Interaction):
         await interaction.response.send_message("Banning", ephemeral=True)
         self.value = True
         self.user = interaction.user
@@ -64,9 +60,7 @@ class Scam(discord.ui.View):
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.grey)
-    async def cancel(
-        self, button: discord.ui.Button, interaction: discord.Interaction
-    ):
+    async def cancel(self, button: discord.ui.Button, interaction: discord.Interaction):
         await interaction.response.send_message("Cancelling", ephemeral=True)
         self.value = False
         self.user = interaction.user
@@ -77,9 +71,7 @@ class Scam(discord.ui.View):
 class BanButton(discord.ui.Button):
     def __init__(self, button_id):
         super().__init__(
-            label='Ban',
-            style=discord.ButtonStyle.red,
-            custom_id='ban'+button_id
+            label="Ban", style=discord.ButtonStyle.red, custom_id="ban" + button_id
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -93,10 +85,10 @@ class StopPoll(discord.ui.View):
         super().__init__(timeout=None)
         self.value = None
 
-    @discord.ui.button(label = 'Stop', style = discord.ButtonStyle.blurple)
+    @discord.ui.button(label="Stop", style=discord.ButtonStyle.blurple)
     async def stop_poll(
         self, button: discord.ui.Button, interaction: discord.Interaction
     ):
-        await interaction.response.send_message("Stopping poll", ephemeral = True)
+        await interaction.response.send_message("Stopping poll", ephemeral=True)
         self.value = True
         self.stop()

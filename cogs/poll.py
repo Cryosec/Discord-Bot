@@ -1,25 +1,24 @@
+# pylint: disable=F0401, W0703, global-statement
 import discord
 import asyncio
 from discord.ext import commands
-from discord.commands import slash_command, Option, permissions
+from discord.commands import permissions
 import config, support
-import traceback
 
 POLL_CONTROL = True
+
 
 class Poll(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    def printProgressBar (
+    def print_progress_bar(
+        self,
         iteration,
         total,
-        prefix = '',
-        suffix = '',
-        decimals = 1,
-        length = 10,
-        fill = '█',
-        printEnd = ""
+        decimals=1,
+        length=10,
+        fill="█",
     ):
         """
         Call in a loop to create terminal progress bar
@@ -33,17 +32,19 @@ class Poll(commands.Cog):
             fill        - Optional  : bar fill character (Str)
             printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
         """
-        percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+        percent = ("{0:." + str(decimals) + "f}").format(
+            100 * (iteration / float(total))
+        )
         filledLength = int(length * iteration // total)
-        bar = fill * filledLength + '-' * (length - filledLength)
+        bar = fill * filledLength + "-" * (length - filledLength)
 
         return f" `|{bar}| {percent}%` "
 
-
-    @commands.command(name='poll', brief=config.BRIEF_POLL, help=config.HELP_POLL)
+    @commands.command(name="poll", brief=config.BRIEF_POLL, help=config.HELP_POLL)
     @permissions.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def poll(
-        self, ctx,
+        self,
+        ctx,
         title: str,
         channel: discord.TextChannel,
         num: int = 2,
@@ -63,11 +64,11 @@ class Poll(commands.Cog):
             "\U0001F7E7",
             "\U0001F7E8",
             "\U0001F7E9",
-            "\U0001F7E6"
+            "\U0001F7E6",
         ]
 
         # Define the view that will contain the buttons
-        #view = discord.ui.View(timeout=None)
+        # view = discord.ui.View(timeout=None)
 
         def check(m):
             return m.author == ctx.author and m.channel == ctx.channel
@@ -79,41 +80,37 @@ class Poll(commands.Cog):
             try:
                 msg = await self.bot.wait_for("message", check=check, timeout=30)
                 options.append(msg.content)
-                #view.add_item(support.VoteButton(
+                # view.add_item(support.VoteButton(
                 #    btn_label = str(x),
                 #    btn_value = msg.content,
                 #    user_list = voted))
-            except asynctio.TimeoutError:
-                await ctx.send("Sorry, you didn't reply in time. Poll creation aborted.")
+            except asyncio.TimeoutError:
+                await ctx.send(
+                    "Sorry, you didn't reply in time. Poll creation aborted."
+                )
                 return
 
         # Create confirmation embed
         try:
             options_embed = discord.Embed(
-                title = 'Poll information',
-                description = '',
-                color = config.BLUE
+                title="Poll information", description="", color=config.BLUE
             )
+            options_embed.add_field(name="Title", value=title, inline=False)
             options_embed.add_field(
-                name = 'Title',
-                value = title,
-                inline = False
+                name="Options",
+                value="\n".join("{} - {}".format(*k) for k in zip(selections, options)),
             )
-            options_embed.add_field(
-                name = 'Options',
-                value = '\n'.join('{} - {}'.format(*k) for k in zip(selections,options)))
-            options_embed.add_field(
-                name = 'Channel',
-                value = channel.mention)
+            options_embed.add_field(name="Channel", value=channel.mention)
 
             options_embed.set_footer(text=config.FOOTER)
 
             confirm_buttons = support.Confirm()
 
             msg = await ctx.send(
-                content= 'Please confirm or cancel',
-                embed = options_embed,
-                view=confirm_buttons)
+                content="Please confirm or cancel",
+                embed=options_embed,
+                view=confirm_buttons,
+            )
 
             await confirm_buttons.wait()
 
@@ -123,21 +120,21 @@ class Poll(commands.Cog):
                 try:
                     options_embed.color = config.GREEN
                 except Exception as e:
-                    print('{}: {}'.format(type(e).__name__, e))
+                    print("{}: {}".format(type(e).__name__, e))
 
                 stop_btn = support.StopPoll()
 
                 await msg.edit(
-                    content = 'Poll confirmed',
-                    embed = options_embed,
-                    view = stop_btn
+                    content="Poll confirmed", embed=options_embed, view=stop_btn
                 )
 
                 # Define actuall poll embed
                 poll = discord.Embed(
                     title=title,
-                    description = '\n'.join('{} - {}'.format(*k) for k in zip(selections,options)),
-                    color = config.BLUE
+                    description="\n".join(
+                        "{} - {}".format(*k) for k in zip(selections, options)
+                    ),
+                    color=config.BLUE,
                 )
                 poll.set_footer(text=config.FOOTER)
 
@@ -147,9 +144,9 @@ class Poll(commands.Cog):
                 poll_sel = []
 
                 # Populate reactions
-                for pos, opt in enumerate(options):
-                    poll_sel.append(selections[pos])
-                    await poll_msg.add_reaction(selections[pos])
+                for pos in enumerate(options):
+                    poll_sel.append(selections[pos[0]])
+                    await poll_msg.add_reaction(selections[pos[0]])
 
                 # Reactions counter
                 total = 0
@@ -172,16 +169,19 @@ class Poll(commands.Cog):
                 while POLL_CONTROL:
 
                     # Define tasks for the wait function
-                    task_rem = asyncio.create_task(self.bot.wait_for('reaction_remove', check=check_vote))
-                    task_add = asyncio.create_task(self.bot.wait_for('reaction_add', check=check_vote))
+                    task_rem = asyncio.create_task(
+                        self.bot.wait_for("reaction_remove", check=check_vote)
+                    )
+                    task_add = asyncio.create_task(
+                        self.bot.wait_for("reaction_add", check=check_vote)
+                    )
                     task_int = asyncio.create_task(stop_btn.wait())
 
                     # Wait for whatever task finishes first
-                    done, pending = await asyncio.wait([
-                        task_add,
-                        task_rem,
-                        task_int
-                    ], return_when=asyncio.FIRST_COMPLETED)
+                    done, _pending = await asyncio.wait(
+                        [task_add, task_rem, task_int],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
 
                     if task_int in done:
                         # Stop looping
@@ -190,10 +190,8 @@ class Poll(commands.Cog):
                         await cache_msg.clear_reactions()
                         # Edit confirmation embed
                         options_embed.color = config.RED
-                        await msg.edit(
-                            content = 'Poll stopped',
-                            embed = options_embed,
-                            view = None
+                        await confirm_msg.edit(
+                            content="Poll stopped", embed=options_embed, view=None
                         )
                         return
 
@@ -214,28 +212,29 @@ class Poll(commands.Cog):
                             # Iterate over reactions and calculate percentages
                             for ind, react in enumerate(cache_msg.reactions):
                                 if str(react.emoji) in poll_sel:
-                                    # Get the total number of emojis for this react
-                                    # and calculate the percentage
-                                    #perc = ((react.count - 1)/total) * 100
-
                                     # Create a progress bar with the percentage
-                                    value = Poll.printProgressBar(
-                                        iteration = (react.count - 1),
-                                        total = total,
-                                        length=20)
+                                    value = Poll.print_progress_bar(
+                                        self,
+                                        iteration=(react.count - 1),
+                                        total=total,
+                                        length=20,
+                                    )
 
                                     percentages[ind] = value
 
                             # Edit the original message poll
                             new_embed = discord.Embed(
                                 title=title,
-                                description = '\n'.join('{} - {} {}'.format(*k) for k in zip(selections,options,percentages)),
-                                color = config.BLUE
+                                description="\n".join(
+                                    "{} - {} {}".format(*k)
+                                    for k in zip(selections, options, percentages)
+                                ),
+                                color=config.BLUE,
                             )
                             new_embed.set_footer(text=config.FOOTER)
                             await cache_msg.edit(embed=new_embed)
                         except Exception as e:
-                            await ctx.send('{}: {}'.format(type(e).__name__, e))
+                            await ctx.send("{}: {}".format(type(e).__name__, e))
 
                     # Act on reaction_remove
                     elif task_rem in done:
@@ -260,40 +259,37 @@ class Poll(commands.Cog):
                                 # Iterate over reactions and calculate percentages
                                 for ind, react in enumerate(cache_msg.reactions):
                                     if str(react.emoji) in poll_sel:
-                                        # Get the total number of emojis for this react
-                                        # and calculate the percentage
-                                        perc = ((react.count - 1)/total) * 100
-
                                         # Create a progress bar with the percentage
-                                        value = Poll.printProgressBar(
-                                            iteration = (react.count - 1),
-                                            total = total,
-                                            length=20)
+                                        value = Poll.print_progress_bar(
+                                            self,
+                                            iteration=(react.count - 1),
+                                            total=total,
+                                            length=20,
+                                        )
 
                                         percentages[ind] = value
 
                                 # Edit the original message poll
                                 new_embed = discord.Embed(
                                     title=title,
-                                    description = '\n'.join('{} - {} {}'.format(*k) for k in zip(selections,options,percentages)),
-                                    color = config.BLUE
+                                    description="\n".join(
+                                        "{} - {} {}".format(*k)
+                                        for k in zip(selections, options, percentages)
+                                    ),
+                                    color=config.BLUE,
                                 )
                                 new_embed.set_footer(text=config.FOOTER)
                                 await cache_msg.edit(embed=new_embed)
                             except Exception as e:
-                                await ctx.send('{}: {}'.format(type(e).__name__, e))
-
+                                await ctx.send("{}: {}".format(type(e).__name__, e))
 
             # Act on poll cancellation
             else:
-                await msg.edit(
-                    embed=discord.Embed(title='Poll cancelled'),
-                    view = None)
+                await msg.edit(embed=discord.Embed(title="Poll cancelled"), view=None)
                 return
 
-
         except Exception as e:
-            await ctx.send('{}: {}'.format(type(e).__name__, e))
+            await ctx.send("{}: {}".format(type(e).__name__, e))
 
 
 def setup(bot):
