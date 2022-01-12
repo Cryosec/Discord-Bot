@@ -232,7 +232,18 @@ async def on_ready():
 @bot.event
 async def on_command_error(ctx, error):
     """Log the error output by a command."""
-    log.error(error)
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.reply("This command is currently on cooldown.", ephemeral=True)
+        log.error(error)
+    else:
+        raise error
+
+@bot.event
+async def on_application_command_error(ctx, error):
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.respond("This command is currently on cooldown.", ephemeral=True)
+    else:
+        raise error
 
 
 bot.run(str(TOKEN), reconnect=True)
