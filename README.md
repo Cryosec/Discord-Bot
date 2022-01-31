@@ -10,10 +10,10 @@ The bot requires the following python requirements to run correctly:
 
 * Python 3.9.6
 * py-cord
-* DiscordUtils
 * python-dotenv
 * pytz
 * asyncio
+* cogwatch
 
 ## Setting up
 
@@ -70,24 +70,23 @@ FROM python:3.9.6-slim-buster
 
 WORKDIR /app
 
-RUN apt update; apt install -y git
 RUN python -m pip install python-dotenv pytz asyncio cogwatch
 RUN python -m pip uninstall -y discord.py
-RUN python -m pip install git+https://github.com/Pycord-Development/pycord
+RUN python -m pip install py-cord==2.0.0b1
 
 ```
 > Note, Cogwatch installs discord.py as dependency, so it must be uninstalled before installing pycord
 
 and the command in the same directory as the above Dockerfile:
 
-> `docker build -t python-discord:3.0-dev .`
+> `docker build -t python-discord:3.0-beta .`
 
 This image is available on [Docker Hub](https://hub.docker.com/r/cryosec/python-discord), for x86 environments.
 
 The bot container is then generated through another Dockerfile script:
 
 ```Dockerfile
-FROM python-discord:3.0-dev
+FROM python-discord:3.0-beta
 
 COPY ./ /app/
 

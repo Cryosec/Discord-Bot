@@ -3,7 +3,7 @@ import asyncio
 import random
 import discord
 from discord.ext import commands
-from discord.commands import slash_command, Option
+from discord.commands import slash_command
 import config
 import cogs.moderation as mod
 
@@ -120,10 +120,10 @@ class UsersSlash(commands.Cog):
 
         await ctx.respond(embed=embed)
 
-    @commands.cooldown(1, 86400, commands.BucketType.member)
+    @commands.cooldown(1, 86400, commands.BucketType.user)
     @slash_command(guild_ids=[config.GUILD], name="rr")
     async def russian_roulette(self, ctx):
-        """Russian Roulette for users. Lose, and you get banned."""
+        """Russian Roulette for users. Lose, and you get banned. Can be used once per day."""
         role = ctx.guild.get_role(config.MOD_ID)
 
         if role in ctx.author.roles:

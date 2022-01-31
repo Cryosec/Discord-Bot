@@ -25,12 +25,9 @@ class Poll(commands.Cog):
         @params:
             iteration   - Required  : current iteration (Int)
             total       - Required  : total iterations (Int)
-            prefix      - Optional  : prefix string (Str)
-            suffix      - Optional  : suffix string (Str)
             decimals    - Optional  : positive number of decimals in percent complete (Int)
             length      - Optional  : character length of bar (Int)
             fill        - Optional  : bar fill character (Str)
-            printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
         """
         percent = ("{0:." + str(decimals) + "f}").format(
             100 * (iteration / float(total))
@@ -67,9 +64,6 @@ class Poll(commands.Cog):
             "\U0001F7E6",
         ]
 
-        # Define the view that will contain the buttons
-        # view = discord.ui.View(timeout=None)
-
         def check(m):
             return m.author == ctx.author and m.channel == ctx.channel
 
@@ -80,10 +74,6 @@ class Poll(commands.Cog):
             try:
                 msg = await self.bot.wait_for("message", check=check, timeout=30)
                 options.append(msg.content)
-                # view.add_item(support.VoteButton(
-                #    btn_label = str(x),
-                #    btn_value = msg.content,
-                #    user_list = voted))
             except asyncio.TimeoutError:
                 await ctx.send(
                     "Sorry, you didn't reply in time. Poll creation aborted."

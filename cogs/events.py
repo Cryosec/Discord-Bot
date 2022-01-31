@@ -116,7 +116,7 @@ class Events(commands.Cog):
             )
             new_embed.add_field(name="Ban reason", value=ban_entry.reason, inline=False)
             new_embed.add_field(name="Timestamp", value=now.strftime(TIME_FORMAT))
-            await unban_button.interaction.edit_original_message(
+            await unban_button.inter.edit_original_message(
                 embed=new_embed, view=None
             )
 
@@ -598,6 +598,14 @@ async def check_msg_link(self, message):
         message_id = int(link[6])
 
         channel = message.guild.get_channel(channel_id)
+
+        if channel is None:
+            await message.reply(
+                "Linked message might not be from this server. Cannot embed content",
+                ephemeral=True,
+            )
+            return
+
         msg = await channel.fetch_message(message_id)
         msg.content = (
             (msg.content[:1020] + "...") if len(msg.content) > 1024 else msg.content
@@ -615,7 +623,7 @@ async def check_msg_link(self, message):
         await message.reply(embed=embed)
 
 
-async def issue_warn(self, s, message, warning):
+async def issue_warn(self, warns, message, warning):
     """Issue a warning to the specified user and create relative embed for JAC violations.
 
     Keyword arguments:
@@ -629,16 +637,16 @@ async def issue_warn(self, s, message, warning):
 
     # if the author is in the warnings database,
     # increase the relative warnings counter
-    if str(message.author.id) in s:
-        tmp = s[str(message.author.id)]
+    if str(message.author.id) in warns:
+        tmp = warns[str(message.author.id)]
         tmp["warnings"] = tmp.get("warnings") + 1
         tmp["reasons"].append(reason)
 
-        s[str(message.author.id)] = tmp
+        warns[str(message.author.id)] = tmp
 
         # Check if multiple 14-days violation warnings
         count = 0
-        for warn in s[str(message.author.id)]["reasons"]:
+        for warn in warns[str(message.author.id)]["reasons"]:
             if "User violated 14-day wait period" in warn:
                 count = count + 1
 
@@ -647,11 +655,11 @@ async def issue_warn(self, s, message, warning):
         if count == 2 or count == 3:
             reason = "Kick: Multiple violations of 14-day rule in JAC"
 
-            tmp = s[str(message.author.id)]
+            tmp = warns[str(message.author.id)]
             tmp["kicks"] = tmp.get("kicks") + 1
             tmp["reasons"].append(reason)
 
-            s[str(message.author.id)] = tmp
+            warns[str(message.author.id)] = tmp
 
             await message.author.send(
                 "You have been kicked from Drewski's Operators server for violating the 14-day wait period for clan ads multiple times."
@@ -663,20 +671,20 @@ async def issue_warn(self, s, message, warning):
             await message.author.send(
                 "You have been banned from Drewski's Operators server for violating the 14-day wait period for clan ads multiple times."
             )
-            s.close()
+            warns.close()
             await message.guild.ban(message.author, reason=reason)
             return
 
-        s.sync()
+        warns.sync()
     else:
-        s[str(message.author.id)] = {
+        warns[str(message.author.id)] = {
             "warnings": 1,
             "kicks": 0,
             "bans": 0,
             "reasons": [reason],
             "tag": str(message.author),
         }
-        s.sync()
+        warns.sync()
 
     # Generate log embed
     embed = discord.Embed(

@@ -233,7 +233,9 @@ async def on_ready():
 async def on_command_error(ctx, error):
     """Log the error output by a command."""
     if isinstance(error, commands.CommandOnCooldown):
-        await ctx.reply("This command is currently on cooldown.", ephemeral=True)
+        #await ctx.reply("This command is currently on cooldown.", ephemeral=True)
+        log.error(error)
+    elif isinstance(error, commands.CommandNotFound):
         log.error(error)
     else:
         raise error
