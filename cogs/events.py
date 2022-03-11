@@ -454,9 +454,10 @@ async def check_invites(self, message):
         if any(url in message.content for url in config.INVITE_WHITELIST):
             return
         else:
-            role = message.guild.get_role(config.MOD_ID)
-            # Whitelist mods, again
-            if role in message.author.roles:
+            mod_role = message.guild.get_role(config.MOD_ID)
+            admin_role = message.guild.get_role(config.ADMIN_ID)
+            # if not admin or mod and message is typical spam, block and notify
+            if admin_role in message.author.roles or mod_role in message.author.roles:
                 pass
             elif message.channel.id == config.CLAN_CHAN:
                 pass
@@ -598,13 +599,6 @@ async def check_msg_link(self, message):
         message_id = int(link[6])
 
         channel = message.guild.get_channel(channel_id)
-
-        if channel is None:
-            await message.reply(
-                "Linked message might not be from this server. Cannot embed content",
-                ephemeral=True,
-            )
-            return
 
         msg = await channel.fetch_message(message_id)
         msg.content = (

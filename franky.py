@@ -39,6 +39,7 @@ init_extensions = [
     "cogs.events",
     "cogs.giveaway",
     "cogs.poll",
+    "cogs.modalpoll",
 ]
 
 intents = discord.Intents.default()
@@ -201,6 +202,19 @@ async def check_timers():
         traceback.print_exc()
         print("-----------")
 
+@tasks.loop(minutes=15)
+async def war_channel():
+
+    #guild = await bot.fetch_guild(config.GUILD)
+    channel = bot.get_channel(config.WAR_CHAN)
+
+    messages = await channel.history(limit=25).flatten()
+
+    for msg in messages:
+        if msg.author == bot.user:
+            return
+
+    await channel.send(config.WAR_MSG)
 
 @bot.event
 async def on_ready():
@@ -227,6 +241,8 @@ async def on_ready():
     if not check_timers.is_running():
         check_timers.start()
 
+    if not war_channel.is_running():
+        war_channel.start()
 
 # Manage errors globally
 @bot.event

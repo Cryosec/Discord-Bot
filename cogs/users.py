@@ -45,7 +45,7 @@ class Users(commands.Cog):
                         "tempban": config.HELP_TEMPBAN,
                         "timers": config.HELP_TIMERS,
                         "jac": config.HELP_JAC,
-                        "giveaway": config.HELP_GA,
+                        #"giveaway": config.HELP_GA,
                         "users": config.HELP_INFO_USER,
                         "poll": config.HELP_POLL,
                     }[x]

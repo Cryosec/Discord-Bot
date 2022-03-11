@@ -31,14 +31,14 @@ class Unban(discord.ui.View):
         super().__init__(timeout=None)
         self.value = None
         self.user = None
-        self.interaction = None
+        self.inter = None
 
     @discord.ui.button(label="Unban", style=discord.ButtonStyle.red)
     async def unban(self, button: discord.ui.Button, interaction: discord.Interaction):
         await interaction.response.send_message("Unbanning", ephemeral=True)
         self.value = True
         self.user = interaction.user
-        self.interaction = interaction
+        self.inter = interaction
         self.stop()
 
 

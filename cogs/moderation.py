@@ -216,10 +216,10 @@ class Moderation(commands.Cog):
             del tmp["reasons"][-1]
             s[str(member.id)] = tmp
             s.close()
-            await Moderation.status(self, ctx, member)
+            await Moderation.status(ctx, member)
         else:
             s.close()
-            await Moderation.status(self, ctx, member)
+            await Moderation.status(ctx, member)
 
     # not included in !help, used for debugging reasons
     @commands.command(name="unjac")
@@ -241,10 +241,10 @@ class Moderation(commands.Cog):
             if str(member.id) in s:
                 del s[str(member.id)]
                 s.close()
-                await Moderation.status(self, ctx, member.id)
+                await Moderation.status(ctx, member.id)
             else:
                 s.close()
-                await Moderation.status(self, ctx, member.id)
+                await Moderation.status(ctx, member.id)
         else:
             await ctx.reply(content="User is not a Member apparently.", embed=None)
 

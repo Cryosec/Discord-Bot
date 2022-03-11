@@ -30,7 +30,7 @@ class ModerationSlash(commands.Cog):
 
             await member.add_roles(role)
             print(f"INFO: Muting {member} indefinitely")
-            await ctx.send(
+            await ctx.respond(
                 embed=discord.Embed(
                     title=f"User {member} has been muted indefinitely",
                     colour=config.YELLOW,
@@ -47,7 +47,7 @@ class ModerationSlash(commands.Cog):
             embed.add_field(name="End:", value="Indefinitely")
             embed.set_footer(text=config.FOOTER)
 
-            await channel.respond(content=None, embed=embed)
+            await channel.send(content=None, embed=embed)
 
         else:
             tz_TX = pytz.timezone("US/Central")
@@ -603,10 +603,10 @@ class ModerationSlash(commands.Cog):
                 del tmp["reasons"][-1]
                 s[str(member.id)] = tmp
                 s.close()
-                await mod.Moderation.status(self, ctx, member.id)
+                await mod.Moderation.status(ctx, member.id)
             else:
                 s.close()
-                await mod.Moderation.status(self, ctx, member.id)
+                await mod.Moderation.status(ctx, member.id)
 
             await ctx.respond(
                 embed=discord.Embed(title=f"{member} last warning has been removed.")
@@ -821,7 +821,7 @@ class ModerationSlash(commands.Cog):
             else:
                 await ctx.respond(
                     embed=discord.Embed(
-                        title=f"Slowmode for {channel} set to {seconds}",
+                        title=f"Slowmode for {channel} set to {seconds} seconds",
                         colour=config.YELLOW,
                     )
                 )
