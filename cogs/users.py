@@ -180,7 +180,7 @@ class Users(commands.Cog):
             title=f"Information on {member.name}#{member.discriminator}",
             colour=member.colour,
         )
-        embed.set_thumbnail(url=member.avatar.url)
+        embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar)
 
         # Account age
         creation_date = member.created_at.strftime("%b-%d-%Y")

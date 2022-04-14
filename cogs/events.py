@@ -601,12 +601,19 @@ async def check_msg_link(self, message):
         channel = message.guild.get_channel(channel_id)
 
         msg = await channel.fetch_message(message_id)
+
+        # limit embed to 1024 chars, as per discord limits
         msg.content = (
             (msg.content[:1020] + "...") if len(msg.content) > 1024 else msg.content
         )
         embed = discord.Embed(
             title=f"{msg.author}", description=msg.content, color=config.GREEN
         )
+
+        # Check if message content is an image URL, then embed the image
+        if msg.attachments:
+            embed.set_image(url=msg.attachments[0].url)
+
         embed.set_thumbnail(url=msg.author.avatar.url)
         embed.add_field(name="Channel", value=msg.channel)
         embed.add_field(

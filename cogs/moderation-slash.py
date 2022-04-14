@@ -160,6 +160,11 @@ class ModerationSlash(commands.Cog):
             role = ctx.guild.get_role(config.MUTE_ID)
             await member.remove_roles(role)
             print(f"User {member} was unmuted")
+
+            timers = shelve.open(config.TIMED)
+            if str(member.id) in timers:
+                del timers[str(member.id)]
+
             await ctx.respond(
                 embed=discord.Embed(
                     title=f"User {member} was unmuted.", colour=config.GREEN

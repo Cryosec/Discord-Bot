@@ -2,6 +2,8 @@
 
 [![Espresso License :coffee:](https://img.shields.io/badge/license-Espresso%20☕-7890F0.svg)](https://github.com/jack23247/espresso-license)
 
+### This bot is full of small bugs here and there, use at your own mental health risk
+
 This is the code for the Discord bot Lord Franklin used in the [community server](https://discord.gg/drewski) of [Youtuber](https://www.youtube.com/user/DrewskiTheAdventurer) and [Streamer](https://www.twitch.tv/operatordrewski/) OperatorDrewski.
 The code is mostly specific to the structure and use-case in said server, but can be easily modified and adapted for a moltitude of servers. This bot is not meant to be run on multiple servers at the same time, instead being coded to best work with a single guild per instance.
 
@@ -66,27 +68,27 @@ There are three other variables used for commands meant as inside jokes between 
 I run this bot inside a Docker container, on ~~a Raspberry Pi 4 connected through ethernet~~ (bot has been moved) an unRAID server. The container used by the bot is based on another container built to expedite container creation after updates to either the code base or dependencies. This base container is generated through the following Dockerfile script:
 
 ```Dockerfile
-FROM python:3.9.6-slim-buster
+FROM python:3.10.4-slim-bullseye
 
 WORKDIR /app
 
 RUN python -m pip install python-dotenv pytz asyncio cogwatch
 RUN python -m pip uninstall -y discord.py
-RUN python -m pip install py-cord==2.0.0b1
+RUN python -m pip install py-cord==2.0.0b7
 
 ```
 > Note, Cogwatch installs discord.py as dependency, so it must be uninstalled before installing pycord
 
 and the command in the same directory as the above Dockerfile:
 
-> `docker build -t python-discord:3.0-beta .`
+> `docker build -t python-discord:3.1-beta5 .`
 
 This image is available on [Docker Hub](https://hub.docker.com/r/cryosec/python-discord), for x86 environments.
 
 The bot container is then generated through another Dockerfile script:
 
 ```Dockerfile
-FROM python-discord:3.0-beta
+FROM python-discord:3.1-beta5
 
 COPY ./ /app/
 

@@ -160,6 +160,10 @@ class Moderation(commands.Cog):
         await ctx.reply(embed=embed)
         await member.remove_roles(role)
 
+        timers = shelve.open(config.TIMED)
+        if str(member.id) in timers:
+            del timers[str(member.id)]
+
     # !warn = give a warning to member
     @commands.command(name="warn", brief=config.BRIEF_WARN, help=config.HELP_WARN)
     @commands.guild_only()
