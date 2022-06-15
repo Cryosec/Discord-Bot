@@ -765,6 +765,18 @@ class Moderation(commands.Cog):
         elif isinstance(error, commands.BadArgument):
             await ctx.reply("I could not find that user. Try again.")
 
+    # Blame avyy
+    @commands.command(name="avyy")
+    @commands.guild_only()
+    async def avyy(self, ctx):
+
+        avyy = await self.bot.get_or_fetch_user(217718568752644096)
+
+        embed = discord.Embed()
+        embed.set_image(url="https://i.imgur.com/Zb6iKwA.png")
+
+        await ctx.send(content=avyy.mention, embed=embed)
+
 
 def setup(bot):
     bot.add_cog(Moderation(bot))
