@@ -37,14 +37,15 @@ init_extensions = [
     "cogs.users",
     "cogs.users-slash",
     "cogs.events",
-    "cogs.giveaway",
-    "cogs.poll",
-    "cogs.modalpoll",
+    #"cogs.giveaway",
+    #"cogs.poll",
+    #"cogs.modalpoll",
 ]
 
 intents = discord.Intents.default()
 intents.presences = True
 intents.members = True
+intents.message_content = True
 
 bot = commands.Bot(
     command_prefix=commands.when_mentioned_or("!"),
