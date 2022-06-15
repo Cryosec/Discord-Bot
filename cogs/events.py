@@ -175,10 +175,10 @@ class Events(commands.Cog):
             )
             return
 
+        await check_invites(self, message)
         if not await check_spam_v2(self, message):
             await check_scam(self, message)
         await check_jac(self, message)
-        await check_invites(self, message)
         await check_blacklist(self, message)
         await check_msg_link(self, message)
 
@@ -201,6 +201,7 @@ async def check_spam_v2(self, message) -> bool:
         return False
 
     if scam_link is not None and "@everyone" in message.content:
+
         await message.delete()
 
         if scam_link.group("url") not in config.SCAM:
@@ -462,6 +463,12 @@ async def check_invites(self, message):
             elif message.channel.id == config.CLAN_CHAN:
                 pass
             else:
+
+                # Check if invite is in banlist - immediately ban
+                if any(url in message.content for url in config.INVITE_BANLIST):
+                    await message.author.ban(reason="Blacklisted invite")
+                    return
+
                 # Create warning message
                 await message.channel.send(
                     f"**WARNING:** {message.author.mention}, do not post invite links."
