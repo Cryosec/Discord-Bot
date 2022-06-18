@@ -669,16 +669,22 @@ async def issue_warn(self, warns, message, warning):
 
             warns[str(message.author.id)] = tmp
 
-            await message.author.send(
-                "You have been kicked from Drewski's Operators server for violating the 14-day wait period for clan ads multiple times."
-            )
+            try:
+                await message.author.send(
+                    "You have been kicked from Drewski's Operators server for violating the 14-day wait period for clan ads multiple times."
+                )
+            except:
+                print("Error sending message to user for warning.")
             await message.guild.kick(message.author, reason=reason)
         elif count == 4:
             reason = "Ban: Multiple kicks for violation of 14-day rule in JAC"
 
-            await message.author.send(
-                "You have been banned from Drewski's Operators server for violating the 14-day wait period for clan ads multiple times."
-            )
+            try:
+                await message.author.send(
+                    "You have been banned from Drewski's Operators server for violating the 14-day wait period for clan ads multiple times."
+                )
+            except:
+                print("Error sending message to user for warning.")
             warns.close()
             await message.guild.ban(message.author, reason=reason)
             return
