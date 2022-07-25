@@ -1,7 +1,7 @@
-# pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pylint: disable=F0401, W0702, W0703, W0105, W0613, unused-variable
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 import discord
-from datetime import datetime, timezone
+from datetime import datetime
 import pytz
 import config
 

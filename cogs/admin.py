@@ -61,9 +61,9 @@ class Admin(commands.Cog):
     # cover my ass when I fuck up with timeouts
     @commands.command(name="rt", hidden=True)
     @commands.is_owner()
-    async def rt(self, ctx, id):
+    async def rt(self, ctx, user):
         guild = await self.bot.fetch_guild(config.GUILD)
-        member = await guild.fetch_member(id)
+        member = await guild.fetch_member(user)
 
         await member.remove_timeout()
 

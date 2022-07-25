@@ -2,35 +2,20 @@
 
 [![Espresso License :coffee:](https://img.shields.io/badge/license-Espresso%20☕-7890F0.svg)](https://github.com/jack23247/espresso-license)
 
-<<<<<<< HEAD
-This is the code for the Discord bot Lord Franklin used in the [community server](https://discord.gg/drewski) of [Youtuber](https://www.youtube.com/user/DrewskiTheAdventurer) and [Streamer](https://www.twitch.tv/operatordrewski/) OperatorDrewski. 
-=======
 ### This bot is full of small bugs here and there, use at your own mental health risk
 
 This is the code for the Discord bot Lord Franklin used in the [community server](https://discord.gg/drewski) of [Youtuber](https://www.youtube.com/user/DrewskiTheAdventurer) and [Streamer](https://www.twitch.tv/operatordrewski/) OperatorDrewski.
->>>>>>> e4ef746d47c186188798a789da742942bc857d59
 The code is mostly specific to the structure and use-case in said server, but can be easily modified and adapted for a moltitude of servers. This bot is not meant to be run on multiple servers at the same time, instead being coded to best work with a single guild per instance.
 
 ## Requirements
 The bot requires the following python requirements to run correctly:
 
-<<<<<<< HEAD
-* Python 3.9.6
-* discord
-* DiscordUtils
-* discord-py-slash-commands
-* cogwatch
-* python-dotenv
-* pytz
-* asyncio
-=======
 * Python 3.10.4
 * py-cord
 * python-dotenv
 * pytz
 * asyncio
 * cogwatch
->>>>>>> e4ef746d47c186188798a789da742942bc857d59
 
 ## Setting up
 
@@ -50,11 +35,7 @@ The bot uses a `config.py` file with the necessary global variables. By default 
 * `GUILD` set with the integer ID of the Guild the bot will run in.
 * Roles:
     * `MOD_ID` set to the integer ID of the moderator role.
-<<<<<<< HEAD
-    * `ADMIN_ID` set to the integer ID of the administrator role. 
-=======
     * `ADMIN_ID` set to the integer ID of the administrator role.
->>>>>>> e4ef746d47c186188798a789da742942bc857d59
     * `BOT_ID` set to the integer ID of the bot.
     * `MUTE_ID` set to the integer ID of the *muted* role.
 * Channels:
@@ -75,10 +56,6 @@ The bot uses a `config.py` file with the necessary global variables. By default 
 * `SCAMTEXT` set to a list of strings to search for and filter from possible scam messages
 * `SCAM` empty list that will support the execution of scam messages filtering
 * `INVITE_WHITELIST` set to a list of discord invite URLs that will not be filtered.
-<<<<<<< HEAD
-* There are extra strings setup with information on the commands (the usual `brief=` and `help=` assignments) and some longer informational strings sepecific to the Community Server.
-=======
->>>>>>> e4ef746d47c186188798a789da742942bc857d59
 
 There are three other variables used for commands meant as inside jokes between some community members, these are not part of the official scope of the bot. These variables are as follow:
 
@@ -86,37 +63,13 @@ There are three other variables used for commands meant as inside jokes between 
 * `TOXY_ID` set to the integer ID of a user for the `!toxy` command.
 * `INSULTS` set to a list of strings, each being a light-hearted joke towards the user set for the `LUNDY_ID` variable.
 
-<<<<<<< HEAD
-=======
 Other variables used throughout the code are not listed here as they are part of temporary commands or events.
 
->>>>>>> e4ef746d47c186188798a789da742942bc857d59
 ## Deployment
 
 I run this bot inside a Docker container, on ~~a Raspberry Pi 4 connected through ethernet~~ (bot has been moved) an unRAID server. The container used by the bot is based on another container built to expedite container creation after updates to either the code base or dependencies. This base container is generated through the following Dockerfile script:
 
 ```Dockerfile
-<<<<<<< HEAD
-FROM python:3.9.6-buster
-
-WORKDIR /app
-
-RUN python -m pip install discord
-RUN python -m pip install DiscordUtils
-RUN python -m pip install discord-interactions
-RUN python -m pip install cogwatch
-RUN python -m pip install python-dotenv
-RUN python -m pip install pytz
-RUN python -m pip install asyncio
-```
-(Note: as of v3.0.2, `discord-py-slash-commands` was renamed to `discord-interactions`)
-
-and the command in the same directory as the above Dockerfile:
-
-> docker build -t python-discord:latest .
-
-This image is available on [Docker Hub](https://hub.docker.com/r/cryosec/python-discord), for linux/arm environments.
-=======
 FROM python:3.10.4-slim-bullseye
 
 WORKDIR /app
@@ -133,16 +86,11 @@ and the command in the same directory as the above Dockerfile:
 > `docker build -t python-discord:3.1 .`
 
 This image is available on [Docker Hub](https://hub.docker.com/r/cryosec/python-discord), for x86 environments.
->>>>>>> e4ef746d47c186188798a789da742942bc857d59
 
 The bot container is then generated through another Dockerfile script:
 
 ```Dockerfile
-<<<<<<< HEAD
-FROM python-discord:latest
-=======
 FROM python-discord:3.1
->>>>>>> e4ef746d47c186188798a789da742942bc857d59
 
 COPY ./ /app/
 
@@ -151,9 +99,5 @@ CMD ["python", "-u", "franky.py"]
 
 and built with the command, in the same directory as the above Dockerfile:
 
-<<<<<<< HEAD
-> docker build -t discord-bot:latest .
-=======
 > `docker build -t discord-bot:latest .`
->>>>>>> e4ef746d47c186188798a789da742942bc857d59
 
