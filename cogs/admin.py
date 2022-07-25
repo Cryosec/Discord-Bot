@@ -1,4 +1,5 @@
-# pylint: disable=F0401, W0703
+# pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 from discord.ext import commands
 import config, support
 import importlib
@@ -56,6 +57,15 @@ class Admin(commands.Cog):
             await ctx.send("{}: {}".format(type(e).__name__, e))
         else:
             await ctx.reply("Configuration file reloaded.")
+
+    # cover my ass when I fuck up with timeouts
+    @commands.command(name="rt", hidden=True)
+    @commands.is_owner()
+    async def rt(self, ctx, id):
+        guild = await self.bot.fetch_guild(config.GUILD)
+        member = await guild.fetch_member(id)
+
+        await member.remove_timeout()
 
 
 def setup(bot):

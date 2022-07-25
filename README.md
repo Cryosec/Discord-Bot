@@ -10,7 +10,7 @@ The code is mostly specific to the structure and use-case in said server, but ca
 ## Requirements
 The bot requires the following python requirements to run correctly:
 
-* Python 3.9.6
+* Python 3.10.4
 * py-cord
 * python-dotenv
 * pytz
@@ -63,6 +63,8 @@ There are three other variables used for commands meant as inside jokes between 
 * `TOXY_ID` set to the integer ID of a user for the `!toxy` command.
 * `INSULTS` set to a list of strings, each being a light-hearted joke towards the user set for the `LUNDY_ID` variable.
 
+Other variables used throughout the code are not listed here as they are part of temporary commands or events.
+
 ## Deployment
 
 I run this bot inside a Docker container, on ~~a Raspberry Pi 4 connected through ethernet~~ (bot has been moved) an unRAID server. The container used by the bot is based on another container built to expedite container creation after updates to either the code base or dependencies. This base container is generated through the following Dockerfile script:
@@ -74,21 +76,21 @@ WORKDIR /app
 
 RUN python -m pip install python-dotenv pytz asyncio cogwatch
 RUN python -m pip uninstall -y discord.py
-RUN python -m pip install py-cord==2.0.0b7
+RUN python -m pip install py-cord
 
 ```
 > Note, Cogwatch installs discord.py as dependency, so it must be uninstalled before installing pycord
 
 and the command in the same directory as the above Dockerfile:
 
-> `docker build -t python-discord:3.1-beta5 .`
+> `docker build -t python-discord:3.1 .`
 
 This image is available on [Docker Hub](https://hub.docker.com/r/cryosec/python-discord), for x86 environments.
 
 The bot container is then generated through another Dockerfile script:
 
 ```Dockerfile
-FROM python-discord:3.1-beta5
+FROM python-discord:3.1
 
 COPY ./ /app/
 

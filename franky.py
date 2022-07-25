@@ -1,4 +1,5 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 import os, traceback
 import logging
 import asyncio
@@ -20,11 +21,11 @@ handler.setFormatter(
 log.addHandler(handler)
 
 # cogwatch logger
-# watch_log = logging.getLogger('cogwatch')
-# watch_log.setLevel(logging.INFO)
-# watch_handler = logging.FileHandler(filename='cogwatch.log', encoding='utf-8', mode='w')
-# watch_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
-# watch_log.addHandler(watch_handler)
+watch_log = logging.getLogger('cogwatch')
+watch_log.setLevel(logging.INFO)
+watch_handler = logging.FileHandler(filename='cogwatch.log', encoding='utf-8', mode='w')
+watch_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+watch_log.addHandler(watch_handler)
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -220,8 +221,10 @@ async def war_channel():
 @bot.event
 async def on_ready():
     """Function called when bot is ready to operate, starts cogwatcher and tasks."""
-    # watcher = Watcher(bot, path='cogs')
-    # await watcher.start()
+
+    # Start cogwatch
+    watcher = Watcher(bot, path='cogs')
+    await watcher.start()
 
     # Register persistent views for listening
     # if not self.persistent_views_added:
@@ -259,6 +262,7 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_application_command_error(ctx, error):
+    """Log the error output by application commands."""
     if isinstance(error, commands.CommandOnCooldown):
         await ctx.respond("This command is currently on cooldown.", ephemeral=True)
     else:

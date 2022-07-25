@@ -1,4 +1,5 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 import shelve, pytz
 from datetime import datetime, timedelta
 import re, asyncio
@@ -32,21 +33,22 @@ class ModerationSlash(commands.Cog):
             print(f"INFO: Muting {member} indefinitely")
             await ctx.respond(
                 embed=discord.Embed(
-                    title=f"User {member} has been muted indefinitely",
+                    title=f"User {member} has been timed out indefinitely",
                     colour=config.YELLOW,
                 )
             )
 
             embed = discord.Embed(
-                title="Muting issued!",
-                description="No duration specified. Muting indefinitely.",
-                colour=config.YELLOW,
+               title="Muting issued!",
+               description="No duration specified. Muting indefinitely.",
+               colour=config.YELLOW,
             )
             embed.add_field(name="User:", value=f"{member.mention}")
             embed.add_field(name="Issued by:", value=f"{ctx.author.mention}")
             embed.add_field(name="End:", value="Indefinitely")
             embed.set_footer(text=config.FOOTER)
 
+            # Log timeout in log channel
             await channel.send(content=None, embed=embed)
 
         else:
@@ -106,7 +108,7 @@ class ModerationSlash(commands.Cog):
             await member.add_roles(role)
 
             print(f"INFO: Timer started - User {member} has been muted for {dur}")
-
+            
             await ctx.respond(
                 embed=discord.Embed(
                     title=f"User {member} has been muted for {dur}",

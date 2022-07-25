@@ -1,4 +1,5 @@
-# pylint: disable=F0401
+# pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 import asyncio
 import discord
 from discord.ext import commands

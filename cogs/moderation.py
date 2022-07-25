@@ -1,4 +1,5 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 import discord
 from discord.ext import commands
 import config
@@ -524,6 +525,11 @@ class Moderation(commands.Cog):
         channel = ctx.guild.get_channel(config.LOG_CHAN)
         mem = ctx.guild.get_member(member.id)
 
+        # If user not in the server, fallback to User
+        # Is this dumb? Should I just stick to User?
+        if mem is None:
+            mem = await ctx.bot.get_or_fetch_user(member.id)
+
         if role in mem.roles:
             await ctx.send("You cannot ban a moderator through me.")
         else:
@@ -628,17 +634,27 @@ class Moderation(commands.Cog):
     async def ban_user(
         self,
         ctx,
-        member: typing.Optional[discord.Member] = None,
+        user = typing.Optional[discord.User],
         *,
         reason="Unspecified",
     ):
+        """Ban selected user from the server
+
+        Args:
+            ctx (Context): Current command context.
+            user (User, optional): _description_. Defaults to typing.Optional[discord.User].
+            reason (str, optional): _description_. Defaults to "Unspecified".
+        """
+        # Fetch Member, fallback to User if not in the server
+        member = ctx.guild.get_member(user.id)
 
         if member is None:
             await ctx.reply(
-                "No member found with ID, might not be in the server anymore."
+                "No Member found with ID, might not be in the server anymore. Reverting to User."
             )
-            return
+            member = await ctx.bot.get_or_fetch_user(user.id)
 
+        # Don't ban a moderator through the bot
         role = ctx.guild.get_role(config.MOD_ID)
 
         if role in member.roles:
@@ -721,7 +737,7 @@ class Moderation(commands.Cog):
     async def lundy(self, ctx):
 
         # Remove command call
-        await ctx.message.channel.purge(limit=1)
+        await ctx.message.delete(reason = "!lundy command invocation")
 
         # Get lundy object, and ping with insult
         lundy = await ctx.guild.fetch_member(config.LUNDY_ID)
@@ -750,10 +766,43 @@ class Moderation(commands.Cog):
     async def floppa(self, ctx, member: discord.Member):
         # await ctx.message.channel.purge(limit=1)
         await ctx.send("I am the one who flops")
-        muted = ctx.guild.get_role(config.MUTE_ID)
-        await member.add_roles(muted)
-        await asyncio.sleep(30)
-        await member.remove_roles(muted)
+
+        # Timeout the member for 30 seconds
+        await member.timeout_for(timedelta(seconds=30), reason="floppa'd")
+
+        # Old way with muted role
+        # muted = ctx.guild.get_role(config.MUTE_ID)
+        # await member.add_roles(muted)
+        # await asyncio.sleep(30)
+        # await member.remove_roles(muted)
+
+    # Blame avyy
+    @commands.command(name="avyy")
+    @commands.guild_only()
+    async def avyy(self, ctx):
+
+        await ctx.message.delete(reason = "!avyy command invocation")
+
+        avyy = await self.bot.get_or_fetch_user(config.AVYY_ID)
+
+        embed = discord.Embed()
+        embed.set_image(url="https://i.imgur.com/Zb6iKwA.png")
+
+        await ctx.send(content=avyy.mention, embed=embed)
+
+    # Lotto
+    @commands.command(name="lotto")
+    @commands.guild_only()
+    async def lotto(self, ctx):
+
+        await ctx.message.delete(reason = "!lotto command invocation")
+
+        lotto = await self.bot.get_or_fetch_user(config.LOTTO_ID)
+
+        embed = discord.Embed()
+        embed.set_image(url="https://c.tenor.com/GehTGeLa3yEAAAAC/cap-cap-check.gif")
+
+        await ctx.send(content=lotto.mention, embed=embed)
 
     # Error handling
     @commands.Cog.listener()
@@ -764,18 +813,6 @@ class Moderation(commands.Cog):
             )
         elif isinstance(error, commands.BadArgument):
             await ctx.reply("I could not find that user. Try again.")
-
-    # Blame avyy
-    @commands.command(name="avyy")
-    @commands.guild_only()
-    async def avyy(self, ctx):
-
-        avyy = await self.bot.get_or_fetch_user(217718568752644096)
-
-        embed = discord.Embed()
-        embed.set_image(url="https://i.imgur.com/Zb6iKwA.png")
-
-        await ctx.send(content=avyy.mention, embed=embed)
 
 
 def setup(bot):

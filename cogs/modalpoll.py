@@ -1,4 +1,5 @@
-# pylint: disable=F0401, W0703, global-statement
+# pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 import discord
 import asyncio
 from discord.ext import commands
@@ -242,7 +243,7 @@ class Modalpoll(commands.Cog):
 
                             # Avoid division by zero by resetting the poll
                             if total <= 0:
-                                total = 0
+                                total = 0   # Shouldn't this be 1?
                                 await cache_msg.edit(embed=poll)
                             else:
                                 # Repeat calculations

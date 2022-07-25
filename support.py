@@ -1,5 +1,9 @@
-# pylint: disable=F0401, W0703, unused-argument, unused-variable
+# pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 import discord
+from datetime import datetime, timezone
+import pytz
+import config
 
 # Define a simple view with two buttons, confirm and cancel
 class Confirm(discord.ui.View):
@@ -92,3 +96,34 @@ class StopPoll(discord.ui.View):
         await interaction.response.send_message("Stopping poll", ephemeral=True)
         self.value = True
         self.stop()
+
+
+tz_TX = pytz.timezone("US/Central")
+TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
+
+# Support function for timeout log event
+def timeout_embed(bot: discord.Bot, user: discord.Member, author: discord.Member, reason: str) -> discord.Embed:
+    """Generate log embed for a user timeout event
+
+    Args:
+        user (User): The user that received the timeout
+        author (User): The user that called the timeout
+        reason (String): Reason for the timeout
+    """
+
+    # Generate timestamp
+    now = datetime.now(tz_TX)
+    dt = now.strftime(TIME_FORMAT)
+
+    embed = discord.Embed(
+        title="User timeout issued",
+        description = f"User {user.name}#{user.discriminator} has been timed out by {author}.",
+        colour = config.YELLOW,
+    )
+    embed.set_author(
+        name = bot.user.name, icon_url = bot.user.avatar.url
+    )
+    embed.add_field(name="Reason", value = reason)
+    embed.add_field(name="Timestamp", value = dt)
+
+    return embed

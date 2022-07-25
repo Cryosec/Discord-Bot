@@ -1,4 +1,5 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 import discord
 from discord.commands import slash_command, Option, permissions
 from discord.ext import commands

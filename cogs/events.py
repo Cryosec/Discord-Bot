@@ -1,4 +1,5 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pyright: reportMissingImports=false, reportMissingModuleSource=false
 import re
 from datetime import datetime, timezone
 import pytz, shelve
@@ -158,6 +159,55 @@ class Events(commands.Cog):
 
                 await channel.send(content=None, embed=embed)
 
+    # When a member gets timed out, this should be called
+    @commands.Cog.listener()
+    async def on_member_update(self, before, after):
+        """Called when a member updates their profile.
+
+        Args:
+            before (Member): The updated member's old info
+            after (Member): The updated member's new info
+        """
+
+        now = datetime.now(tz_TX)
+        dt = now.strftime(TIME_FORMAT)
+        guild = after.guild
+
+        # If timed_out from false -> true
+        if not before.timed_out and after.timed_out:
+
+            # Get last entry of audit log that's a member update
+            async for entry in guild.audit_logs(
+                limit=1, action=discord.AuditLogAction.member_update
+            ):
+                # Check if it's the same user of the invoked event
+                if entry.target == after:
+                    # Get who caused the update
+                    author = entry.user
+                
+                channel = guild.get_channel(config.LOG_CHAN)
+                await channel.send(
+                    embed=support.timeout_embed(
+                        self.bot, after, author, entry.reason
+                    )
+                )
+        
+        # If timed_out from true -> false
+        if not after.timed_out and before.timed_out:
+            embed = discord.Embed(
+                title="User timeout removed",
+                description = f"User {after.name}#{after.discriminator} timeout has been removed.",
+                colour = config.YELLOW,
+            )
+            embed.set_author(
+                name = self.bot.user.name, icon_url = self.bot.user.avatar.url
+            )
+            embed.add_field(name="Timestamp", value = dt)
+
+            channel = guild.get_channel(config.LOG_CHAN)
+            await channel.send(embed=embed)
+
+
     @commands.Cog.listener()
     async def on_message(self, message):
         """Perform various checks on each message posted in the Guild.
@@ -166,9 +216,11 @@ class Events(commands.Cog):
         self    -- self reference of the bot
         message -- message to scan
         """
+        # Ignore the bot messages
         if message.author == self.bot.user:
             return
 
+        # Ignore DMs
         if isinstance(message.channel, discord.channel.DMChannel):
             await message.reply(
                 "This bot doesn't manage direct messages because the author is a lazy fuck."
