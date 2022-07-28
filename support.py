@@ -97,12 +97,29 @@ class StopPoll(discord.ui.View):
         self.value = True
         self.stop()
 
+# Define a view with an Undo button for timeouts
+class Untimeout(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.value = None
+        self.user = None
+        self.inter = None
+
+    @discord.ui.button(label="Undo", style=discord.ButtonStyle.red)
+    async def untimeout(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.send_message("Undoing timeout", ephemeral=True)
+        self.value = True
+        self.user = interaction.user
+        self.inter = interaction
+        self.stop()
 
 tz_TX = pytz.timezone("US/Central")
 TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
 
 # Support function for timeout log event
-def timeout_embed(bot: discord.Bot, user: discord.Member, author: discord.Member, reason: str) -> discord.Embed:
+def timeout_embed(
+    bot: discord.Bot, user: discord.Member, author: discord.Member, reason: str
+) -> discord.Embed:
     """Generate log embed for a user timeout event
 
     Args:
@@ -117,13 +134,11 @@ def timeout_embed(bot: discord.Bot, user: discord.Member, author: discord.Member
 
     embed = discord.Embed(
         title="User timeout issued",
-        description = f"User {user.name}#{user.discriminator} has been timed out by {author}.",
-        colour = config.YELLOW,
+        description=f"User {user.name}#{user.discriminator} has been timed out by {author}.",
+        colour=config.YELLOW,
     )
-    embed.set_author(
-        name = bot.user.name, icon_url = bot.user.avatar.url
-    )
-    embed.add_field(name="Reason", value = reason)
-    embed.add_field(name="Timestamp", value = dt)
+    embed.set_author(name=bot.user.name, icon_url=bot.user.avatar.url)
+    embed.add_field(name="Reason", value=reason)
+    embed.add_field(name="Timestamp", value=dt)
 
     return embed

@@ -121,6 +121,7 @@ class UsersSlash(commands.Cog):
 
         await ctx.respond(embed=embed)
 
+    # /rr Command
     @commands.cooldown(1, 86400, commands.BucketType.user)
     @slash_command(guild_ids=[config.GUILD], name="rr")
     async def russian_roulette(self, ctx):

@@ -412,30 +412,6 @@ class Moderation(commands.Cog):
 
                 await ctx.reply(content=None, embed=embed)
 
-    """
-    # !warns = paged list of warnings
-    @bot.command(name='warns', brief=config.BRIEF_WARNINGS, help=config.HELP_WARNINGS)
-    async def list_warnings(self, ctx):
-        warns = shelve.open(config.WARNINGS)
-        embeds= []
-
-        for entry in warns:
-
-            user = warns[entry]['tag']
-            embed = discord.Embed(title = 'Warnings list', description = f'Current user: {user}', color=config.GREEN)
-            embed.add_field(name="Warnings", value = '\n'.join('{}: {}'.format(*k) for k in enumerate(warns[entry]['reasons'])))
-
-            embeds.append(embed)
-
-        warns.close()
-        paginator = DiscordUtils.Pagination.CustomEmbedPaginator(ctx, auto_footer=True, remove_reactions=True)
-        paginator.add_reaction('⏪', "back")
-        paginator.add_reaction('🔐', "lock")
-        paginator.add_reaction('❌', "delete")
-        paginator.add_reaction('⏩', "next")
-
-        await paginator.run(embeds)
-    """
     # !delete = delete n messages from chat
     @commands.command(name="delete", brief=config.BRIEF_DELETE, help=config.HELP_DELETE)
     @commands.guild_only()

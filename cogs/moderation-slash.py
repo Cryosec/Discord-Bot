@@ -6,7 +6,6 @@ import re, asyncio
 import discord
 from discord.commands import slash_command, Option
 from discord.ext import commands
-import cogs.moderation as mod
 import config
 
 class ModerationSlash(commands.Cog):
@@ -609,15 +608,18 @@ class ModerationSlash(commands.Cog):
                 del tmp["reasons"][-1]
                 s[str(member.id)] = tmp
                 s.close()
-                await mod.Moderation.status(ctx, member.id)
+                # await ModerationSlash.status(self, ctx=ctx, user=member)
             else:
                 s.close()
-                await mod.Moderation.status(ctx, member.id)
+                # await ModerationSlash.status(self, ctx=ctx, user=member)
 
+            # Reply to command
             await ctx.respond(
-                embed=discord.Embed(title=f"{member} last warning has been removed.")
+                embed=discord.Embed(title=f"{member} last warning has been removed."),
+                ephemeral=True
             )
 
+            # Log the event in the log channel
             log_channel = ctx.guild.get_channel(config.LOG_CHAN)
             await log_channel.send(
                 embed=discord.Embed(
@@ -625,6 +627,8 @@ class ModerationSlash(commands.Cog):
                     colour=config.GREEN,
                 )
             )
+
+            # This goes in the container logs
             print(f"INFO: Last warning for user {member} removed.")
         else:
             await ctx.respond(
@@ -649,10 +653,10 @@ class ModerationSlash(commands.Cog):
             if str(member.id) in s:
                 del s[str(member.id)]
                 s.close()
-                await mod.Moderation.status(ctx, member.id)
+                await ModerationSlash.status(self, ctx=ctx, user=member)
             else:
                 s.close()
-                await mod.Moderation.status(ctx, member.id)
+                await ModerationSlash.status(self, ctx=ctx, user=member)
             await ctx.respond(
                 embed=discord.Embed(
                     title=f"Warnings cleared for user {member}", colour=config.GREEN
@@ -848,7 +852,7 @@ class ModerationSlash(commands.Cog):
     ):
         """Set a timeout for a given user."""
         duration = timedelta(minutes=minutes)
-        await member.timeout_for(duration, reason)
+        await member.timeout_for(duration, reason=reason)
         await ctx.respond(f"Member {member} timed out for {minutes} minutes.")
 
 

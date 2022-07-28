@@ -1,7 +1,7 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import pytz, shelve
 import discord
 from discord.ext import commands
@@ -185,12 +185,25 @@ class Events(commands.Cog):
                     # Get who caused the update
                     author = entry.user
 
+                # Create button to undo timeout
+                undo_button = support.Untimeout()
+
                 channel = guild.get_channel(config.LOG_CHAN)
                 await channel.send(
                     embed=support.timeout_embed(
                         self.bot, after, author, entry.reason
-                    )
+                    ),
+                    view=undo_button
                 )
+
+                # Wait for button press on embed
+                await undo_button.wait()
+
+                # Respond to button press
+                if undo_button.value:
+
+                    await after.remove_timeout(reason="Timeout removed")
+
 
         # If timed_out from true -> false
         if not after.timed_out and before.timed_out:
@@ -530,6 +543,15 @@ async def check_invites(self, message):
                     tmp["reasons"].append(reason)
 
                     s[str(message.author.id)] = tmp
+
+                    # Check if user is spamming invites, done horribly
+                    count = 0
+                    for tmp_reason in tmp["reasons"]:
+                        if tmp_reason == reason:
+                            count += 1
+                            if count == 3:
+                                # timeout user to avoid more spam
+                                await message.author.timeout_for(timedelta(days=1), reason="Too many invite warnings")
 
                     s.close()
                 else:
