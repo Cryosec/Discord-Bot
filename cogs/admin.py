@@ -67,6 +67,20 @@ class Admin(commands.Cog):
 
         await member.remove_timeout()
 
+    @commands.command(name="survivor", hidden=True)
+    @commands.is_owner()
+    async def survivor(self, ctx):
+        guild = await self.bot.fetch_guild(config.GUILD)
+        chann = await guild.fetch_channel(config.RULE_CHAN)
+
+        def is_me(m):
+            return m.author == self.bot.user
+
+        await chann.purge(limit=1, check=is_me)
+
+        #test = await guild.fetch_channel(config.MCMD_CHAN)
+
+        await chann.send(config.DAYZ_ANNOUNCE, view=support.Survivor())
 
 def setup(bot):
     bot.add_cog(Admin(bot))

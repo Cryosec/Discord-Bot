@@ -3,10 +3,12 @@
 import discord
 from discord.ext import commands
 import config
-import shelve, pytz
+#import shelve, pytz
 from datetime import datetime, timedelta
-import random, typing
-import re, asyncio
+import random
+#import typing
+#import re
+import asyncio
 
 
 class Moderation(commands.Cog):
@@ -27,7 +29,7 @@ class Moderation(commands.Cog):
     @commands.command(name="ping")
     async def ping(self, ctx):
         await ctx.reply("Pong! {0} ms".format(round(self.bot.latency * 1000, 1)))
-
+    """
     # !mute = mute someone with muting role
     @commands.command(name="mute", brief=config.BRIEF_MUTE, help=config.HELP_MUTE)
     @commands.guild_only()
@@ -589,6 +591,8 @@ class Moderation(commands.Cog):
 
                 await ctx.guild.ban(member, reason=reason, delete_message_days=0)
 
+                t.close()
+
                 await asyncio.sleep(int(delta.total_seconds()))
 
                 embed = discord.Embed(
@@ -600,6 +604,8 @@ class Moderation(commands.Cog):
 
                 await channel.send(content=None, embed=embed)
                 await ctx.guild.unban(member, reason="Temp ban concluded")
+
+                t = shelve.open(config.TIMED)
                 del t[str(member.id)]
 
                 t.close()
@@ -614,13 +620,13 @@ class Moderation(commands.Cog):
         *,
         reason="Unspecified",
     ):
-        """Ban selected user from the server
+        #Ban selected user from the server
 
         Args:
             ctx (Context): Current command context.
             user (User, optional): _description_. Defaults to typing.Optional[discord.User].
             reason (str, optional): _description_. Defaults to "Unspecified".
-        """
+        ###
         # Fetch Member, fallback to User if not in the server
         member = ctx.guild.get_member(user.id)
 
@@ -706,7 +712,7 @@ class Moderation(commands.Cog):
             await ctx.reply("User is not in the database")
 
         jac.close()
-
+    """
     # Lundy insults, this one's an inside joke
     @commands.command(name="lundy")
     @commands.guild_only()
@@ -745,12 +751,6 @@ class Moderation(commands.Cog):
 
         # Timeout the member for 30 seconds
         await member.timeout_for(timedelta(seconds=30), reason="floppa'd")
-
-        # Old way with muted role
-        # muted = ctx.guild.get_role(config.MUTE_ID)
-        # await member.add_roles(muted)
-        # await asyncio.sleep(30)
-        # await member.remove_roles(muted)
 
     # Blame avyy
     @commands.command(name="avyy")

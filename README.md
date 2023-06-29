@@ -10,19 +10,21 @@ The code is mostly specific to the structure and use-case in said server, but ca
 ## Requirements
 The bot requires the following python requirements to run correctly:
 
-* Python 3.10.4
-* py-cord
 * python-dotenv
 * pytz
 * asyncio
 * cogwatch
+* sqlalchemy
+* mariadb
+* py-cord
+
+You can find these in the requirements.txt file.
 
 ## Setting up
 
 First of all, it's necessary to have a valid bot token for the bot to work and connect to the Discord API. This token is private and should never be published or shared, as it may result in possible hijacking.
 
-This bot loads the token from a `.env` file in the same directory as the main `franky.py` file. Within this file a single variable is set:
-> DISCORD_TOKEN={your_token}
+This bot loads the token from a `.env` file in the same directory as the main `franky.py` file, under the name `DISCORD_TOKEN`.
 
 This token will be auto-loaded when executing the main python script, hence the `python-dotenv` dependency.
 
@@ -67,37 +69,27 @@ Other variables used throughout the code are not listed here as they are part of
 
 ## Deployment
 
-I run this bot inside a Docker container, on ~~a Raspberry Pi 4 connected through ethernet~~ (bot has been moved) an unRAID server. The container used by the bot is based on another container built to expedite container creation after updates to either the code base or dependencies. This base container is generated through the following Dockerfile script:
+I run this bot inside a Docker container, on ~~a Raspberry Pi 4 connected through ethernet~~ (bot has been moved) an unRAID server. The container used by the bot is a Debian Bookworm image, with some necessary changes done at creation time:
 
 ```Dockerfile
-FROM python:3.10.4-slim-bullseye
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
-RUN python -m pip install python-dotenv pytz asyncio cogwatch
-RUN python -m pip uninstall -y discord.py
-RUN python -m pip install py-cord
+RUN apt-get update && apt-get install -y libmariadb3 libmariadb-dev
 
-```
-> Note, Cogwatch installs discord.py as dependency, so it must be uninstalled before installing pycord
+RUN apt-get install -y python3-pip python3.11-venv
 
-and the command in the same directory as the above Dockerfile:
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-> `docker build -t python-discord:3.1 .`
-
-This image is available on [Docker Hub](https://hub.docker.com/r/cryosec/python-discord), for x86 environments.
-
-The bot container is then generated through another Dockerfile script:
-
-```Dockerfile
-FROM python-discord:3.1
+COPY requirements.txt .
+RUN pip install -r requirements.txt
 
 COPY ./ /app/
 
 CMD ["python", "-u", "franky.py"]
 ```
 
-and built with the command, in the same directory as the above Dockerfile:
-
-> `docker build -t discord-bot:latest .`
 

@@ -1,16 +1,43 @@
-# pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pylint: disable=F0401, W0702, W0703, W0105, W0613, W1201
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
-import shelve, pytz
+import pytz
 from datetime import datetime, timedelta
 import re, asyncio
+import logging
+from logging.handlers import RotatingFileHandler
 import discord
 from discord.commands import slash_command, Option
 from discord.ext import commands
 import config
+import cogs.database as db
+
+
+#Setup module logging
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+
+log_formatter = logging.Formatter("%(name)s - %(asctime)s:%(levelname)s: %(message)s")
+
+file_handler = RotatingFileHandler(
+    filename=f"logs/{__name__}.log",
+    mode="a",
+    maxBytes=20000,
+    backupCount=5,
+    encoding="utf-8")
+file_handler.setFormatter(log_formatter)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+log.addHandler(file_handler)
+log.addHandler(console_handler)
+
 
 class ModerationSlash(commands.Cog):
+
     def __init__(self, bot):
         self.bot = bot
+        self.database = db.Database(self.bot)
 
     # /mute Command
     @slash_command(guild_ids=[config.GUILD], name="mute", default_permission=False)
@@ -28,10 +55,10 @@ class ModerationSlash(commands.Cog):
         if "a" in duration:
 
             await member.add_roles(role)
-            print(f"INFO: Muting {member} indefinitely")
+            log.info("Muting %s indefinitely", member)
             await ctx.respond(
                 embed=discord.Embed(
-                    title=f"User {member} has been timed out indefinitely",
+                    title=f"User {member} has been muted indefinitely",
                     colour=config.YELLOW,
                 )
             )
@@ -90,22 +117,11 @@ class ModerationSlash(commands.Cog):
 
             end_string = end.strftime("%b-%d-%Y %H:%M:%S")
 
-            t = shelve.open(config.TIMED)
-
-            if str(member.id) in t:
-                t[str(member.id)]["mute"] = True
-                t[str(member.id)]["endMute"] = end_string
-            else:
-                t[str(member.id)] = {
-                    "ban": False,
-                    "mute": True,
-                    "endBan": None,
-                    "endMute": end_string,
-                }
+            self.database.addTimerMute(str(member.id), end_string)
 
             await member.add_roles(role)
 
-            print(f"INFO: Timer started - User {member} has been muted for {dur}")
+            log.info("Timer started - User %s has been muted for %s" % (member, dur))
 
             await ctx.respond(
                 embed=discord.Embed(
@@ -125,18 +141,13 @@ class ModerationSlash(commands.Cog):
             embed.add_field(name="End:", value=end_string)
             embed.set_footer(text=config.FOOTER)
 
-            t.close()
             await channel.send(content=None, embed=embed)
 
             await asyncio.sleep(int(delta.total_seconds()))
             await member.remove_roles(role)
-            print(f"INFO: Timer ended - User {member} has been unmuted")
-            t = shelve.open(config.TIMED)
+            log.info("Timer ended - User %s has been unmuted", member)
 
-            if str(member.id) in t:
-                del t[str(member.id)]
-
-            t.close()
+            self.database.delTimer(str(member.id))
 
             embed = discord.Embed(
                 title="Timed mute complete",
@@ -159,11 +170,9 @@ class ModerationSlash(commands.Cog):
         if member is not None:
             role = ctx.guild.get_role(config.MUTE_ID)
             await member.remove_roles(role)
-            print(f"User {member} was unmuted")
+            log.info("User %s was unmuted", member)
 
-            timers = shelve.open(config.TIMED)
-            if str(member.id) in timers:
-                del timers[str(member.id)]
+            self.database.delTimer(str(member.id))
 
             await ctx.respond(
                 embed=discord.Embed(
@@ -192,7 +201,6 @@ class ModerationSlash(commands.Cog):
         if role in member.roles:
             await ctx.respond("You cannot ban a moderator through me.")
         else:
-            s = shelve.open(config.WARNINGS)
 
             tz_TX = pytz.timezone("US/Central")
             now = datetime.now(tz_TX)
@@ -210,25 +218,10 @@ class ModerationSlash(commands.Cog):
             embed.set_footer(text=config.FOOTER)
 
             # Record ban
-            if str(member.id) in s:
-                tmp = s[str(member.id)]
-                tmp["bans"] = tmp.get("bans") + 1
-                tmp["reasons"].append(reason)
-
-                s[str(member.id)] = tmp
-            else:
-                s[str(member.id)] = {
-                    "warnings": 0,
-                    "kicks": 0,
-                    "bans": 1,
-                    "reasons": [reason],
-                    "tag": str(member),
-                }
-
-            s.close()
+            # already done in events.py inside on_member_ban
 
             await ctx.guild.ban(member, reason=reason)
-            print(f"INFO: User {member} was banned")
+            log.info("User %s was banned", member)
             await ctx.respond(
                 embed=discord.Embed(
                     title=f"User {member} was banned from the Server.",
@@ -300,18 +293,7 @@ class ModerationSlash(commands.Cog):
 
                 end_string = end.strftime("%b-%d-%Y %H:%M:%S")
 
-                t = shelve.open(config.TIMED)
-
-                if str(member.id) in t:
-                    t[str(member.id)]["ban"] = True
-                    t[str(member.id)]["endBan"] = end_string
-                else:
-                    t[str(member.id)] = {
-                        "ban": True,
-                        "mute": False,
-                        "endBan": end_string,
-                        "endMute": None,
-                    }
+                self.database.addTimerBan(str(member.id), end_string)
 
                 dur = dur[0:-1]
                 embed = discord.Embed(
@@ -332,8 +314,8 @@ class ModerationSlash(commands.Cog):
 
                 await ctx.guild.ban(member, reason=reason, delete_message_days=0)
 
-                print(
-                    f"Timer started - User {member} has been temporarily banned for {dur}"
+                log.info(
+                    "Timer started - User %s has been temporarily banned for %s" % (member, dur)
                 )
 
                 await ctx.respond(
@@ -355,11 +337,10 @@ class ModerationSlash(commands.Cog):
                 await channel.send(content=None, embed=embed)
                 await ctx.guild.unban(member, reason="Temp ban concluded")
 
-                print(f"Timer ended - User {member} has been unbanned.")
+                log.info("Timer ended - User %s has been unbanned.", member)
 
-                del t[str(member.id)]
+                self.database.delTimer(str(member.id))
 
-                t.close()
 
     # /kick Command
     @slash_command(guild_ids=[config.GUILD], name="kick", default_permission=False)
@@ -375,42 +356,13 @@ class ModerationSlash(commands.Cog):
         if role in member.roles:
             await ctx.send("You cannot kick a moderator through me.")
         else:
-            s = shelve.open(config.WARNINGS)
-
-            # tz_TX = pytz.timezone('US/Central')
-            # now = datetime.now(tz_TX)
-            # dt = now.strftime("%b-%d-%Y %H:%M:%S")
-
-            # Create feedback embed, probably unnecessary
-            # embed = discord.Embed(title = 'User kick issued!',
-            #                    description = f'Reason: {reason}',
-            #                    colour = config.RED)
-            # embed.add_field(name = 'Issuer:', value = ctx.author.mention)
-            # embed.add_field(name = 'Kicked:', value = member.mention)
-            # embed.add_field(name = 'When:', value = dt)
-            # embed.set_footer(text=config.FOOTER)
 
             # Record kick
-            if str(member.id) in s:
-                tmp = s[str(member.id)]
-                tmp["kicks"] = tmp.get("kicks") + 1
-                tmp["reasons"].append(reason)
-
-                s[str(member.id)] = tmp
-            else:
-                s[str(member.id)] = {
-                    "warnings": 0,
-                    "kicks": 1,
-                    "bans": 0,
-                    "reasons": [reason],
-                    "tag": str(member),
-                }
-
-            s.close()
+            # done in events.py at on_member_remove
 
             await ctx.guild.kick(member, reason=reason)
 
-            print(f"INFO: User {member} has been kicked.")
+            log.info("User %s has been kicked.", member)
 
             await ctx.respond(
                 embed=discord.Embed(
@@ -446,21 +398,21 @@ class ModerationSlash(commands.Cog):
                 role_mentions = [role.mention for role in roles]
                 role_list = ", ".join(role_mentions)
 
-                s = shelve.open(config.WARNINGS)
-                if str(member.id) in s:
+                warn_reasons = self.database.getWarnReasons(str(member.id))
+                warn_user = self.database.getWarnUserByID(str(member.id))
+
+                if len(warn_user) > 0:
                     embed = discord.Embed(
                         title=f"Status of user {member}",
                         description="\n".join(
                             "{}: {}".format(*k)
-                            for k in enumerate(s[str(member.id)]["reasons"])
+                            for k in enumerate(warn_reasons)
                         ),
                         colour=config.GREEN,
                     )
-                    embed.add_field(
-                        name="Warnings:", value=s[str(member.id)]["warnings"]
-                    )
-                    embed.add_field(name="Kicks:", value=s[str(member.id)]["kicks"])
-                    embed.add_field(name="Bans:", value=s[str(member.id)]["bans"])
+                    embed.add_field(name="Warnings:", value=warn_user[0][1])
+                    embed.add_field(name="Kicks:", value=warn_user[0][2])
+                    embed.add_field(name="Bans:", value=warn_user[0][3])
                     embed.add_field(
                         name="Joined:",
                         value=member.joined_at.strftime("%b-%d-%Y %H:%M:%S"),
@@ -494,28 +446,27 @@ class ModerationSlash(commands.Cog):
 
                     embed.set_footer(text=config.FOOTER)
 
-                s.close()
                 await ctx.respond(content=None, embed=embed)
 
             else:
-                s = shelve.open(config.WARNINGS)
-                if str(user.id) in s:
+                warn_reasons = self.database.getWarnReasons(str(user.id))
+                warn_user = self.database.getWarnUserByID(str(user.id))
+                if len(warn_user) > 0:
                     embed = discord.Embed(
                         title=f"Status of user {user}",
                         description="**User is no longer in the server**\n"
                         + "\n".join(
                             "{}: {}".format(*k)
-                            for k in enumerate(s[str(user.id)]["reasons"])
+                            for k in enumerate(warn_reasons)
                         ),
                         colour=config.GREEN,
                     )
-                    embed.add_field(name="Warnings:", value=s[str(user.id)]["warnings"])
-                    embed.add_field(name="Kicks:", value=s[str(user.id)]["kicks"])
-                    embed.add_field(name="Bans:", value=s[str(user.id)]["bans"])
+                    embed.add_field(name="Warnings:", value=warn_user[0][1])
+                    embed.add_field(name="Kicks:", value=warn_user[0][2])
+                    embed.add_field(name="Bans:", value=warn_user[0][3])
                     embed.add_field(name="Joined:", value="N/A")
                     embed.set_footer(text=config.FOOTER)
 
-                    s.close()
                     await ctx.respond(content=None, embed=embed)
                 else:
                     embed = discord.Embed(
@@ -546,22 +497,8 @@ class ModerationSlash(commands.Cog):
         """Warn the selected user."""
         print(f"INFO: Warning {member}...")
         try:
-            s = shelve.open(config.WARNINGS)
-            if str(member.id) in s:
-                tmp = s[str(member.id)]
-                tmp["warnings"] = tmp.get("warnings") + 1
-                tmp["reasons"].append(reason)
-                s[str(member.id)] = tmp
-
-            else:
-                s[str(member.id)] = {
-                    "warnings": 1,
-                    "kicks": 0,
-                    "bans": 0,
-                    "reasons": [reason],
-                    "tag": str(member),
-                }
-
+            self.database.addWarning(str(member.id), str(member.name), reason)
+            warn_users = self.database.getWarnUserByID(str(member.id))
             channel = ctx.guild.get_channel(config.LOG_CHAN)
             embed = discord.Embed(
                 title="Warning issued!",
@@ -570,10 +507,8 @@ class ModerationSlash(commands.Cog):
             )
             embed.add_field(name="User:", value=f"{member}")
             embed.add_field(name="Issued by:", value=f"{ctx.author}")
-            embed.add_field(name="Total Warnings:", value=s[str(member.id)]["warnings"])
+            embed.add_field(name="Total Warnings:", value=warn_users[0][1])
             embed.set_footer(text=config.FOOTER)
-
-            s.close()
 
             await channel.send(content=None, embed=embed)
             await ctx.respond(embed=discord.Embed(title=f"{member} has been warned"))
@@ -593,29 +528,12 @@ class ModerationSlash(commands.Cog):
     ):
         """Remove the last warn from a user's warnings list."""
         if member is not None:
-            s = shelve.open(config.WARNINGS)
-            if str(member.id) in s:
-                tmp = s[str(member.id)]
 
-                if tmp["warnings"] == 0:
-                    del tmp
-                    await ctx.respond(
-                        embed=discord.Embed(title="No warnings to remove.")
-                    )
-                    return
-
-                tmp["warnings"] = tmp.get("warnings") - 1
-                del tmp["reasons"][-1]
-                s[str(member.id)] = tmp
-                s.close()
-                # await ModerationSlash.status(self, ctx=ctx, user=member)
-            else:
-                s.close()
-                # await ModerationSlash.status(self, ctx=ctx, user=member)
+            self.database.delWarning(str(member.id), reason="")
 
             # Reply to command
             await ctx.respond(
-                embed=discord.Embed(title=f"{member} last warning has been removed."),
+                embed=discord.Embed(title=f"{member} last warning has been removed, if present."),
                 ephemeral=True
             )
 
@@ -629,14 +547,14 @@ class ModerationSlash(commands.Cog):
             )
 
             # This goes in the container logs
-            print(f"INFO: Last warning for user {member} removed.")
+            log.info("Last warning for user %s removed.", member)
         else:
             await ctx.respond(
                 embed=discord.Embed(
                     title="User is not part of the server", colour=config.YELLOW
                 )
             )
-
+    """
     # /cwarn Command
     @slash_command(guild_ids=[config.GUILD], name="cwarn", default_permission=False)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
@@ -647,16 +565,9 @@ class ModerationSlash(commands.Cog):
             discord.Member, "Member for which to clear all warnings", required=True
         ),
     ):
-        """Remove all warnings from a user's warning list."""
+        # Remove all warnings from a user's warning list.
         if member is not None:
-            s = shelve.open(config.WARNINGS)
-            if str(member.id) in s:
-                del s[str(member.id)]
-                s.close()
-                await ModerationSlash.status(self, ctx=ctx, user=member)
-            else:
-                s.close()
-                await ModerationSlash.status(self, ctx=ctx, user=member)
+            self.database.delAllWarnings()
             await ctx.respond(
                 embed=discord.Embed(
                     title=f"Warnings cleared for user {member}", colour=config.GREEN
@@ -669,7 +580,7 @@ class ModerationSlash(commands.Cog):
                     title="User is not part of the server", colour=config.YELLOW
                 )
             )
-
+    """
     # /jac Command
     @slash_command(guild_ids=[config.GUILD], name="jac", default_permission=False)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
@@ -677,12 +588,12 @@ class ModerationSlash(commands.Cog):
         self, ctx, member: Option(discord.Member, "Member for which to show JAC status")
     ):
         """Get the details of the JAC entry for a selected user."""
-        jac = shelve.open(config.JAC)
+        jac = self.database.getJacByID(str(member.id))
 
-        if str(member.id) in jac:
+        if len(jac) > 0:
             tz_TX = pytz.timezone("US/Central")
             now = datetime.now(tz_TX)
-            dt = datetime.strptime(jac[str(member.id)]["date"], "%b-%d-%Y %H:%M:%S")
+            dt = datetime.strptime(jac[0][2], "%b-%d-%Y %H:%M:%S")
             dt = dt.replace(tzinfo=tz_TX)
 
             end = dt + timedelta(days=14)
@@ -691,18 +602,16 @@ class ModerationSlash(commands.Cog):
 
             embed = discord.Embed(
                 title=f"User {member}",
-                description=jac[str(member.id)]["link"],
+                description=jac[0][1],
                 colour=config.GREEN,
             )
-            embed.add_field(name="Timestamp", value=jac[str(member.id)]["date"])
+            embed.add_field(name="Timestamp", value=jac[0][2])
             embed.add_field(name="Time left", value=str(delta), inline=False)
             embed.set_footer(text=config.FOOTER)
 
             await ctx.respond(content=None, embed=embed)
         else:
             await ctx.respond("User is not in the database")
-
-        jac.close()
 
     # /unjac command
     @slash_command(guild_ids=[config.GUILD], name="unjac", default_permission=False)
@@ -714,10 +623,7 @@ class ModerationSlash(commands.Cog):
     ):
         """Remove the JAC entry for the selected user."""
         if member is not None:
-            jac = shelve.open(config.JAC)
-            if str(member.id) in jac:
-                del jac[str(member.id)]
-            jac.close()
+            self.database.delJac(str(member.id))
             await ctx.respond(
                 embed=discord.Embed(
                     title=f"JAC entry removed for user {member}", colour=config.GREEN
@@ -736,17 +642,17 @@ class ModerationSlash(commands.Cog):
     async def show_timers(self, ctx, group: str = None):
         """Show a list of currently active timers."""
         if group is None:
-            t = shelve.open(config.TIMED)
+            t = self.database.getTimers()
 
             timers = []
+            for elem in t:
 
-            for user in t:
+                usr = await self.bot.fetch_user(int(elem[0]))
+                ban = str(t[elem][1])
+                mute = str(t[elem][2])
+                endBan = str(t[elem][3])
+                endMute = str(t[elem][4])
 
-                usr = await self.bot.fetch_user(int(user))
-                ban = str(t[user]["ban"])
-                mute = str(t[user]["mute"])
-                endMute = str(t[user]["endMute"])
-                endBan = str(t[user]["endBan"])
 
                 timers.append(
                     f"{usr.mention}"

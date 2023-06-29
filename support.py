@@ -113,6 +113,28 @@ class Untimeout(discord.ui.View):
         self.inter = interaction
         self.stop()
 
+
+class Remove(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.user = None
+        self.op = None
+        self.inter = None
+
+    @discord.ui.button(label="Remove", style=discord.ButtonStyle.red)
+    async def remove(self, button: discord.ui.Button, interaction: discord.Interaction):
+
+        owner = interaction.message.author
+        role = interaction.message.guild.get_role(config.MOD_ID)
+
+        self.user = interaction.user
+        self.inter = interaction
+        if owner == interaction.user or role in interaction.user.roles:
+            await interaction.response.send_message(content="Removing embed...", ephemeral=True)
+            self.stop()
+        else:
+            await interaction.response.send_message(content="You cannot do this action", ephemeral=True)
+
 tz_TX = pytz.timezone("US/Central")
 TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
 
@@ -142,3 +164,30 @@ def timeout_embed(
     embed.add_field(name="Timestamp", value=dt)
 
     return embed
+
+# Define a persistent view for @Survivor role
+class Survivor(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Join the Survivors", custom_id="survivor-join", style=discord.ButtonStyle.primary)
+    async def button_add_role(self, button, interaction):
+
+        role = interaction.guild.get_role(config.SURV_ID)
+
+        if role not in interaction.user.roles:
+            await interaction.user.add_roles(role, reason="Member pressed button in #rules channel")
+            await interaction.response.send_message("Welcome to the Survivors! You can now see the DayZ channels.", ephemeral=True)
+        else:
+            await interaction.response.send_message("You're already a Survivor! Head down to #dayz-announcements for the most recent updates.", ephemeral=True)
+
+    @discord.ui.button(label="Leave the Survivors", custom_id="survivor-leave", style=discord.ButtonStyle.danger)
+    async def button_rem_role(self, button, interaction):
+
+        role = interaction.guild.get_role(config.SURV_ID)
+
+        if role in interaction.user.roles:
+            await interaction.user.remove_roles(role, reason="Member pressed button in #rules channel")
+            await interaction.response.send_message("Sad to see you go! You can join back any time.", ephemeral=True)
+        else:
+            await interaction.response.send_message("You're not a Survivor! Can't remove a role you don't have.", ephemeral=True)

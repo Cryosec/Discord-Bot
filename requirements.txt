@@ -1,0 +1,7 @@
+python-dotenv
+pytz
+asyncio
+cogwatch
+sqlalchemy
+mariadb
+py-cord

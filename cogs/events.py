@@ -1,27 +1,57 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 import re
-from datetime import datetime, timezone, timedelta
-import pytz, shelve
+import logging
+from logging.handlers import RotatingFileHandler
+from datetime import datetime, timedelta
+import pytz
 import discord
 from discord.ext import commands
 import config
 import support
+import cogs.database as db
+
+
+#Setup module logging
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+
+log_formatter = logging.Formatter("%(name)s - %(asctime)s:%(levelname)s: %(message)s")
+
+file_handler = RotatingFileHandler(
+    filename=f"logs/{__name__}.log",
+    mode="a",
+    maxBytes=20000,
+    backupCount=5,
+    encoding="utf-8")
+file_handler.setFormatter(log_formatter)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+log.addHandler(file_handler)
+log.addHandler(console_handler)
+
 
 tz_TX = pytz.timezone("US/Central")
 TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
 
 
-def log(message):
-    """Log to console a message with added timestamp."""
-    now = datetime.now(timezone.utc)
-    print(f"{now} UTC - " + message)
+#def log(message):
+#   """Log to console a message with added timestamp."""
+#    now = datetime.now(timezone.utc)
+#    print(f"{now} UTC - " + message)
 
 
 class Events(commands.Cog):
+
+    database = None
+
     def __init__(self, bot):
         """Initialize Events cog."""
         self.bot = bot
+        self.database = db.Database(self.bot)
+
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
@@ -38,32 +68,11 @@ class Events(commands.Cog):
 
         ban_entry = await guild.fetch_ban(user)
 
-        s = shelve.open(config.WARNINGS)
-        if str(user.id) in s:
-            tmp = s[str(user.id)]
-            tmp["bans"] = tmp.get("bans") + 1
-            tmp["reasons"].append(ban_entry.reason)
-
-            s[str(user.id)] = tmp
+        # Add ban log to DB
+        if ban_entry.reason is None:
+            self.database.addBan(str(user.id), str(user), "Ban: No reason Specified")
         else:
-            if ban_entry.reason is None:
-                s[str(user.id)] = {
-                    "warnings": 0,
-                    "kicks": 0,
-                    "bans": 1,
-                    "reasons": ["Ban: No reason specified"],
-                    "tag": str(user),
-                }
-            else:
-                s[str(user.id)] = {
-                    "warnings": 0,
-                    "kicks": 0,
-                    "bans": 1,
-                    "reasons": ["Ban:" + ban_entry.reason],
-                    "tag": str(user),
-                }
-
-        s.close()
+            self.database.addBan(str(user.id), str(user), ban_entry.reason)
 
         author = None
 
@@ -99,12 +108,7 @@ class Events(commands.Cog):
             await guild.unban(user)
 
             # Remove ban from db
-            s = shelve.open(config.WARNINGS)
-            tmp = s[str(user.id)]
-            tmp["bans"] = tmp.get("bans") - 1
-            del tmp["reasons"][-1]
-            s[str(user.id)] = tmp
-            s.close()
+            self.database.delBan(str(user.id), ban_entry.reason)
 
             # Edit ban log embed to reflect
             new_embed = discord.Embed(
@@ -138,6 +142,7 @@ class Events(commands.Cog):
 
         author = None
 
+        # Check if latest entry is actually a kick log
         async for entry in guild.audit_logs(
             limit=1, action=discord.AuditLogAction.kick
         ):
@@ -158,6 +163,8 @@ class Events(commands.Cog):
                 channel = guild.get_channel(config.LOG_CHAN)
 
                 await channel.send(content=None, embed=embed)
+
+                self.database.addKick(str(member.id), str(member.name), entry.reason)
 
     # When a member gets timed out, this should be called
     @commands.Cog.listener()
@@ -201,7 +208,6 @@ class Events(commands.Cog):
 
                 # Respond to button press
                 if undo_button.value:
-
                     await after.remove_timeout(reason="Timeout removed")
 
 
@@ -266,10 +272,11 @@ async def check_spam_v2(self, message) -> bool:
 
     if scam_link is not None and "@everyone" in message.content:
 
+        #await message.respond("Your message has been removed as it violates our anti-spam filters", ephemeral=True)
         await message.delete()
 
         if scam_link.group("url") not in config.SCAM:
-            log("INFO: Possible spam detected.")
+            log.info("Possible spam detected: %s", message.content)
             config.SCAM.append(scam_link.group("url"))
             await scam_check_embed(self, message, scam_link.group("url"))
         return True
@@ -297,13 +304,15 @@ async def check_jac(self, message):
         if botrole in message.author.roles:
             return
         # Save entries in JAC db, check if existence
-        jac = shelve.open(config.JAC)
-        s = shelve.open(config.WARNINGS)
 
-        if str(message.author.id) in jac:
+        jac = self.database.getJac()
+        #warn_users = self.database.getWarnUsers()
+
+        if str(message.author.id) in map(lambda x: x[0], jac):
+
+            # DB logging happens within function
             await issue_warn(
                 self,
-                s,
                 message,
                 f"**WARNING:** {message.author.mention}, you have already posted in the last 14 days.",
             )
@@ -319,33 +328,25 @@ async def check_jac(self, message):
                 link = link.group("url")
 
                 # Check if link already in db
-                for _key, value in jac.items():
-                    if value["link"] == link:
+                # TODO: check if this is correct
+                if link in map(lambda x: x[1], jac):
 
-                        # Issue warning as link already exists
-                        await issue_warn(
-                            self,
-                            s,
-                            message,
-                            f"**WARNING:** {message.author.mention}, ad has already been posted in the last 14 days.",
-                        )
-                        await message.delete()
-
-                        s.close()
-                        jac.close()
-                        return
+                    # Issue warning as link already exists
+                    await issue_warn(
+                        self,
+                        message,
+                        f"**WARNING:** {message.author.mention}, ad has already been posted in the last 14 days.",
+                    )
+                    await message.delete()
+                    return
 
             # Get timestamp
             now = datetime.now(tz_TX)
             date = now.strftime(TIME_FORMAT)
 
             # Add entry because wasn't there before
-            tmp = {"link": link, "date": date}
-            jac[str(message.author.id)] = tmp
-            jac.sync()
+            self.database.addJac(str(message.author.id), link, date)
 
-        s.close()
-        jac.close()
 
 async def check_scam(self, message):
     """Check each message to filter out possible scam or phishing URLs.
@@ -367,40 +368,42 @@ async def check_scam(self, message):
 
         if any(y in scam_msg.lower() for y in config.SCAMTEXT):
             try:
+                #await message.respond("Your message has been deleted as it violates our anti-scam filters", ephemeral=True)
                 await message.delete()
-
                 if scam_link.group("url") not in config.SCAM:
                     config.SCAM.append(scam_link.group("url"))
-                    log("INFO: nitro scam blocked.")
+                    log.info("Nitro scam blocked.")
                     await scam_check_embed(self, message, scam_link.group("url"))
 
             except:
-                log("INFO: Message not found.")
+                log.exception("Message not found.")
 
         # normal url scam check
         if any(x in scam_link.group("url") for x in config.SCAMURLS):
             try:
+                #await message.respond("Your message has been deleted as it violates our anti-scam filters", ephemeral=True)
                 await message.delete()
 
                 if scam_link.group("url") not in config.SCAM:
                     config.SCAM.append(scam_link.group("url"))
-                    log("INFO: general scam blocked.")
+                    log.info("General scam blocked.")
                     await scam_check_embed(self, message, scam_link.group("url"))
 
             except:
-                log("INFO: message not found.")
+                log.exception("Message not found.")
     else:
         # discord nitro scam, aggressive check pt.2
         scam_msg = message.content
 
         if any(y in scam_msg.lower() for y in config.SCAMTEXT):
+            #await message.respond("Your message has been deleted as it violates our anti-scam filters", ephemeral=True)
             await message.delete()
 
             if scam_msg not in config.SCAM:
                 config.SCAM.append(scam_msg)
 
                 await scam_check_embed(self, message, scam_msg)
-                log("INFO: nitro text scam blocked.")
+                log.info("Nitro text scam blocked.")
 
 
 async def scam_check_embed(self, message, filtered_url):
@@ -442,7 +445,7 @@ async def scam_check_embed(self, message, filtered_url):
 
     # If mod confirms ban
     if ban_button.value:
-        log(f"INFO: Spam confirmed by {ban_button.user}")
+        log.info("Spam confirmed by %s", ban_button.user)
         modrole = message.guild.get_role(config.MOD_ID)
         if modrole not in message.author.roles:
 
@@ -476,7 +479,7 @@ async def scam_check_embed(self, message, filtered_url):
 
     # If mod cancels
     else:
-        log(f"INFO: Spam negated by {ban_button.user}")
+        log.info("Spam negated by %s", ban_button.user)
         new_embed = discord.Embed(
             title="Possible scam - manual review completed",
             description=f"Review of the blocked message was done by {ban_button.user}",
@@ -525,6 +528,9 @@ async def check_invites(self, message):
                 pass
             else:
 
+                # Delete message
+                await message.delete()
+
                 # Check if invite is in banlist - immediately ban
                 if any(url in message.content for url in config.INVITE_BANLIST):
                     await message.author.ban(reason="Blacklisted invite")
@@ -536,33 +542,11 @@ async def check_invites(self, message):
                 )
 
                 reason = f"User posted invite link in {message.channel}"
-                s = shelve.open(config.WARNINGS)
-                if str(message.author.id) in s:
-                    tmp = s[str(message.author.id)]
-                    tmp["warnings"] = tmp.get("warnings") + 1
-                    tmp["reasons"].append(reason)
+                self.database.addWarning(str(message.author.id), str(message.author.name), reason)
 
-                    s[str(message.author.id)] = tmp
-
-                    # Check if user is spamming invites, done horribly
-                    count = 0
-                    for tmp_reason in tmp["reasons"]:
-                        if tmp_reason == reason:
-                            count += 1
-                            if count == 3:
-                                # timeout user to avoid more spam
-                                await message.author.timeout_for(timedelta(days=1), reason="Too many invite warnings")
-
-                    s.close()
-                else:
-                    s[str(message.author.id)] = {
-                        "warnings": 1,
-                        "kicks": 0,
-                        "bans": 0,
-                        "reasons": [reason],
-                        "tag": str(message.author),
-                    }
-                    s.close()
+                # Check if user is spamming invites, done horribly
+                if self.database.getWarnCount(str(message.author.id), reason) >= 3:
+                    await message.author.timeout_for(timedelta(days=1), reason="Too many invite warnings")
 
                 # Generate log embed
                 embed = discord.Embed(
@@ -582,9 +566,8 @@ async def check_invites(self, message):
 
                 channel = message.guild.get_channel(config.LOG_CHAN)
                 await channel.send(content=None, embed=embed)
-                log("Invite link blocked.")
-                # Delete message
-                await message.delete()
+                log.info("Invite link blocked.")
+
 
 
 async def check_blacklist(self, message):
@@ -608,24 +591,8 @@ async def check_blacklist(self, message):
             )
 
             reason = f"User sent prohibited word in {message.channel}"
-            s = shelve.open(config.WARNINGS)
-            if str(message.author.id) in s:
-                tmp = s[str(message.author.id)]
-                tmp["warnings"] = tmp.get("warnings") + 1
-                tmp["reasons"].append(reason)
 
-                s[str(message.author.id)] = tmp
-
-                s.close()
-            else:
-                s[str(message.author.id)] = {
-                    "warnings": 1,
-                    "kicks": 0,
-                    "bans": 0,
-                    "reasons": [reason],
-                    "tag": str(message.author),
-                }
-                s.close()
+            self.database.addWarning(str(message.author.id), str(message.author.name), reason)
 
             # Generate log embed
             embed = discord.Embed(
@@ -691,6 +658,9 @@ async def check_msg_link(self, message):
         if msg.attachments:
             embed.set_image(url=msg.attachments[0].url)
 
+        # Define remove button
+        remove_button = support.Remove()
+
         embed.set_thumbnail(url=msg.author.avatar.url)
         embed.add_field(name="Channel", value=msg.channel)
         embed.add_field(
@@ -698,15 +668,23 @@ async def check_msg_link(self, message):
         )
         embed.set_footer(text=config.FOOTER)
 
-        await message.reply(embed=embed)
+        # Reply with remove button
+        reply = await message.reply(embed=embed, view=remove_button)
+
+        await remove_button.wait()
+
+        # Manage remove button behaviour
+        role = message.guild.get_role(config.MOD_ID)
+
+        if remove_button.user == msg.author or role in remove_button.user.roles:
+            await reply.delete(reason="Poster removed embed")
 
 
-async def issue_warn(self, warns, message, warning):
+async def issue_warn(self, message, warning):
     """Issue a warning to the specified user and create relative embed for JAC violations.
 
     Keyword arguments:
     self    -- self reference of the bot
-    s       -- Shelve containing the warnings list
     message -- message that was scanned
     warning -- warning message"""
     # Notify and warn user
@@ -715,29 +693,22 @@ async def issue_warn(self, warns, message, warning):
 
     # if the author is in the warnings database,
     # increase the relative warnings counter
-    if str(message.author.id) in warns:
-        tmp = warns[str(message.author.id)]
-        tmp["warnings"] = tmp.get("warnings") + 1
-        tmp["reasons"].append(reason)
 
-        warns[str(message.author.id)] = tmp
+    warn_user = self.database.getWarnUsers()
+
+    if str(message.author.id) in map(lambda x: x[0], warn_user):
+
+        self.database.addWarning(str(message.author.id), str(message.author.name), reason)
 
         # Check if multiple 14-days violation warnings
-        count = 0
-        for warn in warns[str(message.author.id)]["reasons"]:
-            if "User violated 14-day wait period" in warn:
-                count = count + 1
+        count = self.database.getWarnCount(str(message.author.id), reason)
 
         # If second violation, kick from the server
         # and notify user in DMs
         if count == 2 or count == 3:
             reason = "Kick: Multiple violations of 14-day rule in JAC"
 
-            tmp = warns[str(message.author.id)]
-            tmp["kicks"] = tmp.get("kicks") + 1
-            tmp["reasons"].append(reason)
-
-            warns[str(message.author.id)] = tmp
+            self.database.addKick(str(message.author.id), str(message.author.name), reason)
 
             try:
                 await message.author.send(
@@ -748,27 +719,18 @@ async def issue_warn(self, warns, message, warning):
             await message.guild.kick(message.author, reason=reason)
         elif count == 4:
             reason = "Ban: Multiple kicks for violation of 14-day rule in JAC"
-
+            #self.database.addBan(str(message.author.id), str(message.author.name), reason)
             try:
                 await message.author.send(
                     "You have been banned from Drewski's Operators server for violating the 14-day wait period for clan ads multiple times."
                 )
             except:
                 print("Error sending message to user for warning.")
-            warns.close()
             await message.guild.ban(message.author, reason=reason)
             return
 
-        warns.sync()
     else:
-        warns[str(message.author.id)] = {
-            "warnings": 1,
-            "kicks": 0,
-            "bans": 0,
-            "reasons": [reason],
-            "tag": str(message.author),
-        }
-        warns.sync()
+        self.database.addWarning(str(message.author.id), str(message.author), reason)
 
     # Generate log embed
     embed = discord.Embed(

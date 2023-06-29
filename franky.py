@@ -1,31 +1,54 @@
-# pylint: disable=F0401, W0702, W0703, W0105, W0613
+# pylint: disable=F0401, W0702, W0703, W0105, W0613, E1101
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
-import os, traceback
+import os
 import logging
+from logging.handlers import RotatingFileHandler
 import asyncio
 from datetime import datetime, timedelta
-import shelve, pytz
+import pytz
 from dotenv import load_dotenv
 import discord
 from discord.ext import commands, tasks
 from cogwatch import Watcher
 import config
+import support
+import cogs.database as db
 
-# System setup
-log = logging.getLogger("discord")
-log.setLevel(logging.WARNING)
-handler = logging.FileHandler(filename="discord.log", encoding="utf-8", mode="w")
-handler.setFormatter(
-    logging.Formatter("%(asctime)s:%(levelname)s:%(name)s: %(message)s")
-)
-log.addHandler(handler)
+#Setup module logging
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+
+log_formatter = logging.Formatter("%(name)s - %(asctime)s:%(levelname)s: %(message)s")
+
+file_handler = RotatingFileHandler(
+    filename=f"logs/{__name__}.log",
+    mode="a",
+    maxBytes=20000,
+    backupCount=5,
+    encoding="utf-8")
+file_handler.setFormatter(log_formatter)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+log.addHandler(file_handler)
+log.addHandler(console_handler)
 
 # cogwatch logger
-watch_log = logging.getLogger('cogwatch')
+#Setup module logging
+watch_log = logging.getLogger("cogwatch")
 watch_log.setLevel(logging.INFO)
-watch_handler = logging.FileHandler(filename='cogwatch.log', encoding='utf-8', mode='w')
-watch_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
-watch_log.addHandler(watch_handler)
+
+watch_file_handler = RotatingFileHandler(
+    filename="logs/cogwatch.log",
+    mode="a",
+    maxBytes=20000,
+    backupCount=5,
+    encoding="utf-8")
+watch_file_handler.setFormatter(log_formatter)
+
+watch_log.addHandler(watch_file_handler)
+watch_log.addHandler(console_handler)
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -34,7 +57,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 init_extensions = [
     "cogs.admin",
     "cogs.moderation",
-    "cogs.moderation-slash",
+    "cogs.moderation_slash",
     "cogs.users",
     "cogs.users-slash",
     "cogs.events",
@@ -55,6 +78,7 @@ bot = commands.Bot(
     intents=intents,
 )
 
+database = db.Database(bot)
 
 # Here starts the logic
 if __name__ == "__main__":
@@ -64,33 +88,30 @@ if __name__ == "__main__":
             print(f"INFO: Loading extension {extension}")
             bot.load_extension(extension)
         except Exception as exception:
-            print(f"ERROR: can't load extension {extension}")
-            log.error("Failed to load extension %s", extension)
-            traceback.print_exc()
+            log.exception("Failed to load extension %s", extension)
 
 
 async def check_jac_timers(now):
     """Check which JAC timers have surpassed 14 days and remove from list."""
     print("Checking if there are JAC logs to remove...")
 
-    jac = shelve.open(config.JAC)
+    jac = database.getJac()
     for elem in jac:
         # entry_time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y')
-        entry_time = datetime.strptime(jac[elem]["date"], "%b-%d-%Y %H:%M:%S")
+        entry_time = datetime.strptime(elem[2], "%b-%d-%Y %H:%M:%S")
         delta = timedelta(days=14)
         newtime = entry_time + delta
 
         # check if 14 days have passed
         if newtime < now:
-            print(f"Removing entry for {elem}")
-            del jac[elem]
-
-    jac.close()
+            print(f"Removing entry for {elem[0]}")
+            #del jac[elem]
+            database.delJac(elem[0])
 
 
 async def check_mute_timers(now, time_db, guild, channel, mem):
     """Check which finished mute timers have been missed and remove the mute."""
-    mute_time = datetime.strptime(time_db[mem]["endMute"], "%b-%d-%Y %H:%M:%S")
+    mute_time = datetime.strptime(time_db[4], "%b-%d-%Y %H:%M:%S")
 
     # If timer ran out, unmute user
     if mute_time < now:
@@ -110,17 +131,16 @@ async def check_mute_timers(now, time_db, guild, channel, mem):
             await channel.send(content=None, embed=embed)
             await member.remove_roles(role)
 
-        except:
-            print("\nError in fetching user, removing entry from db...")
+            database.delTimer(str(mem))
 
-        time_db[mem]["mute"] = False
-        time_db[mem]["endMute"] = None
-        time_db.sync()
+        except:
+            log.exception("\nError in fetching user, removing entry from db...")
+            database.delTimer(str(mem))
 
 
 async def check_ban_timers(now, time_db, guild, channel, mem):
     """Check which finished ban timers have been missed and remove the ban"""
-    ban_time = datetime.strptime(time_db[mem]["endBan"], "%b-%d-%Y %H:%M:%S")
+    ban_time = datetime.strptime(time_db[3], "%b-%d-%Y %H:%M:%S")
 
     # If timer ran out, unban user
     if ban_time < now:
@@ -140,24 +160,19 @@ async def check_ban_timers(now, time_db, guild, channel, mem):
         try:
             await guild.unban(user)
         except:
-            print("Error while executing timed unban")
-        time_db[mem]["ban"] = False
-        time_db[mem]["endBan"] = None
-        time_db.sync()
+            log.exception("Error while executing timed unban")
+        database.delTimer(str(mem))
+
     # Re-add the timer to the list -- this could cause duplicate timers
     elif ban_time > now:
         user = await bot.fetch_user(int(mem))
         print(f"\nUser {mem} is tempbanned. Adding to wait...")
-        time_db.close()
         await asyncio.sleep((ban_time - now).total_seconds())
         try:
             await guild.unban(user)
         except:
-            print("Error while executing timed unban")
-        time_db = shelve.open(config.TIMED)
-        time_db[mem]["ban"] = False
-        time_db[mem]["endBan"] = None
-        time_db.sync()
+            log.exception("Error while executing timed unban")
+        database.delTimer(str(mem))
 
 
 @tasks.loop(minutes=60)
@@ -178,30 +193,28 @@ async def check_timers():
         await check_jac_timers(now)
 
         print("Checking if I missed some unbanning or unmuting...")
-        t = shelve.open(config.TIMED, writeback=True)
+        timers = database.getTimers()
 
-        # Cycle shelve database to check for timed events to resume
-        for mem in t:
+        # Cycle database to check for timed events to resume
+        for elem in timers:
             print(
-                mem + "- Ban: " + str(t[mem]["ban"]) + ", Mute: " + str(t[mem]["mute"])
+                elem[0] + "- Ban: " + str(elem[1]) + ", Mute: " + str(elem[2])
             )
-            if t[mem]["mute"]:
-                await check_mute_timers(now, t, guild, channel, mem)
+            if elem[2]:
+                await check_mute_timers(now, elem, guild, channel, elem[0])
 
-            if t[mem]["ban"]:
-                await check_ban_timers(now, t, guild, channel, mem)
+            if elem[1]:
+                await check_ban_timers(now, elem, guild, channel, elem[0])
 
             # If there are no more timers for a user, there's no need to keep track of them
-            if not t[mem]["mute"] and not t[mem]["ban"]:
-                print(f"\nUser {mem} has no more timers. Removing from db...")
-                del t[mem]
-        t.close()
+            if not elem[2] and not elem[1]:
+                print(f"\nUser {elem[0]} has no more timers. Removing from db...")
+                database.delTimer(str(elem[0]))
 
         print("Done! Waiting 60 minutes for next check...")
         print("-----------")
     except:
-        print("Error while checking timers, waiting next loop...")
-        traceback.print_exc()
+        log.exception("Error while checking timers, waiting next loop...")
         print("-----------")
 
 @tasks.loop(minutes=15)
@@ -226,12 +239,8 @@ async def on_ready():
     watcher = Watcher(bot, path='cogs')
     await watcher.start()
 
-    # Register persistent views for listening
-    # if not self.persistent_views_added:
-    # self.add_view(support.Unban())
-    # self.add_view(support.Scam())
-    # self.persistent_views_added = True
-    # pass
+    # Register view for persistence
+    bot.add_view(support.Survivor())
 
     print(
         f"\nLogged in as {bot.user.name} - {bot.user.id}\nAPI version: {discord.__version__}"

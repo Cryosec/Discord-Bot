@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 from discord.commands import slash_command
 import config
-import cogs.moderation as mod
+import cogs.moderation_slash as mod
 
 
 class UsersSlash(commands.Cog):
@@ -135,7 +135,7 @@ class UsersSlash(commands.Cog):
         num = random.randint(1, 6)
         if num == 1:
             await ctx.respond("*Bang*")
-            await mod.Moderation.tempban_user(
+            await mod.ModerationSlash().tempban_user(
                 ctx, ctx.author, "24h", reason="Russian roulette loser."
             )
         else:
