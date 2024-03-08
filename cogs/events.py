@@ -470,7 +470,7 @@ async def scam_check_embed(self, message, filtered_url):
             await ban_button.inter.message.edit(embed=new_embed, view=None)
             await message.author.ban(
                 reason=f"Spam message confirmed by {ban_button.user}",
-                delete_message_days=0,
+                delete_message_days=1,
             )
             try:
                 config.SCAM.remove(filtered_url)
@@ -514,7 +514,7 @@ async def check_invites(self, message):
     is not config.CLAN_CHAN and warn the user who posted it. If the URL is in
     config.INVITE_WHITELIST, the message is ignored.
     """
-    if "discord.gg/" in message.content:
+    if "discord.gg/" in message.content or "discord.com/" in message.content:
         # Check if in invite whitelist
         if any(url in message.content for url in config.INVITE_WHITELIST):
             return
@@ -536,6 +536,19 @@ async def check_invites(self, message):
                     await message.author.ban(reason="Blacklisted invite")
                     return
 
+
+                # Testing: treat all invites as scams, don't log to channel
+
+                # extract URL
+                message_url = re.search(r"(?P<url>https?://[^\s]+)", message.content)
+
+                if message_url.group("url") not in config.SCAM:
+                    config.SCAM.append(message_url.group("url"))
+                    log.info("General scam blocked.")
+                    await scam_check_embed(self, message, message_url.group("url"))
+
+                # Commenting out the rest while testing
+                """
                 # Create warning message
                 await message.channel.send(
                     f"**WARNING:** {message.author.mention}, do not post invite links."
@@ -567,6 +580,7 @@ async def check_invites(self, message):
                 channel = message.guild.get_channel(config.LOG_CHAN)
                 await channel.send(content=None, embed=embed)
                 log.info("Invite link blocked.")
+                """
 
 
 

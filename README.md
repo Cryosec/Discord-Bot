@@ -45,6 +45,7 @@ The bot uses a `config.py` file with the necessary global variables. By default 
     * `UCMD_CHAN` set to the integer ID of the channel the users will type commands in.
     * `MCMD_CHAN` set to the integer ID of the channel the mods will type commands in.
     * `CLAN_CHAN` set to the integer ID of the channel where users will post clan invites.
+    * `RULE_CHAN` set to the integer ID of the channel where rules are posted.
 * `FOOTER` set to a string to personalize the footer of the bot's embeds.
 * Colors:
     * `RED` set to `0xe74c3c`
@@ -54,16 +55,84 @@ The bot uses a `config.py` file with the necessary global variables. By default 
     * `ORANGE` set to `0xf39c12`
     * `PURPLE` set to `0x8e44ad`
 * `BLACKLIST` set to a list of strings, each being a word to censor.
-* `SCAMURLS` set to a list of strings to search for and filter from possible scam URLs
-* `SCAMTEXT` set to a list of strings to search for and filter from possible scam messages
-* `SCAM` empty list that will support the execution of scam messages filtering
+* `SCAMURLS` set to a list of strings to search for and filter from possible scam URLs.
+* `SCAMTEXT` set to a list of strings to search for and filter from possible scam messages.
+* `SCAM` empty list that will support the execution of scam messages filtering.
 * `INVITE_WHITELIST` set to a list of discord invite URLs that will not be filtered.
+* `INVITE_BANLIST` set to a list of discord invites that will cause an immediate ban of the poster.
+* `GA_ACCESS` set to a list of integer IDs of the users allowed to post giveaways.
+* `GA_CHANNELS`set to a list of integer IDs of channels where giveaways can be posted.
 
-There are three other variables used for commands meant as inside jokes between some community members, these are not part of the official scope of the bot. These variables are as follow:
+There are other variables used for commands meant as inside jokes between some community members, these are not part of the official scope of the bot. These variables are as follow:
 
 * `LUNDY_ID` set to the integer ID of a user for the `!lundy` command.
 * `TOXY_ID` set to the integer ID of a user for the `!toxy` command.
 * `INSULTS` set to a list of strings, each being a light-hearted joke towards the user set for the `LUNDY_ID` variable.
+* `GOOZ_ID`
+* `AVYY_ID`
+* `CRYO_ID`
+* `LOTTO_ID`
+
+Moreover, short and long descriptions for commands are stored in their own constant string in the `config.py` file.
+The list is as follows:
+
+```python
+# BRIEF descriptors of commands
+BRIEF_MUTE = 'Give "Muted" role to specified user'
+BRIEF_UNMUTE = 'Remove "Muted" role from specified user'
+BRIEF_WARN = 'Issue a warning to specified user'
+BRIEF_UNWARN = 'Remove last warning from specified user'
+BRIEF_WARNINGS = 'Show a paginator with all warnings'
+BRIEF_CLEAR = 'Remove all warnings from specified user'
+BRIEF_STATUS = 'View status report on specified user'
+BRIEF_TIMERS = 'View all current timers for bans and mutes'
+BRIEF_DELETE = 'Delete last n messages from current chat'
+BRIEF_KICK = 'Kick specified user from the server'
+BRIEF_BAN = 'Ban specified user from the server'
+BRIEF_TEMPBAN = 'Temporarly ban user for set time'
+BRIEF_JAC = 'Get information on a user JAC log'
+BRIEF_SLOW = 'Set a slowmode timer in the specified channel'
+BRIEF_POLL = 'Create a poll in the specified channel'
+
+# users.py | users-slash.py strings
+
+# Help messages by command
+ROLES_BRIEF = 'Get information about roles used in the server'
+TWITCH_BRIEF = 'Get information about the Twitch integration'
+PATREON_BRIEF = 'Get information about the Patreon integration'
+FAQ_BRIEF = 'Get information about the most frequently asked questions'
+JOINED_BRIEF = 'Get information about when you last joined the server'
+ME_BRIEF = 'Get information on your Account in the server. Once per day.'
+MERCH_BRIEF = 'Get information on OperatorDrewski\'s merch'
+RR_BRIEF = '1 in 6 chance to get yourself banned permanently. Use at your own risk.'
+```
+
+Longer descriptors are in the following list, not including the string content (for length purposes):
+
+```plaintext
+HELP_MUTE
+HELP_UNMUTE
+HELP_UNWARN
+HELP_WARNINGS
+HELP_CLEAR
+HELP_STATUS
+HELP_DELETE
+HELP_KICK
+HELP_BAN
+HELP_TEMPBAN
+HELP_JAC
+HELP_TIMERS
+HELP_POLL
+HELP_INFO_MOD
+
+ROLES_INFO
+TWITCH_INFO
+TWITCH_URL
+FAQ
+DAYZ_ANNOUNCE
+DAYZ_BRIEF
+DAYZ_DESC
+```
 
 Other variables used throughout the code are not listed here as they are part of temporary commands or events.
 
