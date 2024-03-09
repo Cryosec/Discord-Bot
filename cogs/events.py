@@ -515,6 +515,9 @@ async def check_invites(self, message):
     config.INVITE_WHITELIST, the message is ignored.
     """
     if "discord.gg/" in message.content or "discord.com/" in message.content:
+        #Stop if link is to another channel, maybe find a way to make this work better
+        if "discord.com/channels" in message.content:
+            return
         # Check if in invite whitelist
         if any(url in message.content for url in config.INVITE_WHITELIST):
             return
