@@ -161,4 +161,12 @@ COPY ./ /app/
 CMD ["python", "-u", "franky.py"]
 ```
 
+The bot connects to a MariaDB container, which must be setup and run separately, through the `database.py` cog. Within this file, the usual connection parameters are loaded from `.env`:
 
+```plaintext
+DB_USERNAME={User you created in MariaDB}
+DB_PASSWORD={Use a password please}
+DB_HOST={IP where container is reachable}
+DB_PORT={MariaDB port, usually 3306}
+DB_NAME={DB name you created in MariaDB}
+```
