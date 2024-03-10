@@ -277,7 +277,14 @@ async def check_spam_v2(self, message) -> bool:
 
         if scam_link.group("url") not in config.SCAM:
             log.info("Possible spam detected: %s", message.content)
+
+            # Add the URL to the temporary SCAM list in config.py
             config.SCAM.append(scam_link.group("url"))
+
+            # Append the author ID to the SCAM_USER list in config.py
+            config.SCAM_USER.append(message.author.id)
+
+            # Send embed for moderators in the mod log channel
             await scam_check_embed(self, message, scam_link.group("url"))
         return True
     return False
@@ -440,6 +447,13 @@ async def scam_check_embed(self, message, filtered_url):
 
     await channel.send(embed=embed, view=ban_button)
 
+    # Temporarily timeout the message author
+    try:
+        await message.author.timeout_for(duration=datetime.timedelta(days=1),
+                                         reason="Temporary timeout for spam review")
+    except:
+        log.error("Couldn't timeout user for spam review.")
+
     # Wait for a mod to press a button
     await ban_button.wait()
 
@@ -470,10 +484,11 @@ async def scam_check_embed(self, message, filtered_url):
             await ban_button.inter.message.edit(embed=new_embed, view=None)
             await message.author.ban(
                 reason=f"Spam message confirmed by {ban_button.user}",
-                delete_message_days=1,
+                delete_message_seconds=43200, # 12 hours
             )
             try:
                 config.SCAM.remove(filtered_url)
+                config.SCAM_USER.remove(message.author.id)
             except:
                 pass
 
@@ -499,7 +514,9 @@ async def scam_check_embed(self, message, filtered_url):
 
         await ban_button.inter.message.edit(embed=new_embed, view=None)
         try:
+            message.author.remove_timeout(reason="Spam review completed. Timeout removed")
             config.SCAM.remove(filtered_url)
+            config.SCAM_USER.remove(message.author.id)
         except:
             pass
 
@@ -542,13 +559,22 @@ async def check_invites(self, message):
 
                 # Testing: treat all invites as scams, don't log to channel
 
-                # extract URL
+                # extract URL with generic regex
                 message_url = re.search(r"(?P<url>https?://[^\s]+)", message.content)
+                if not message_url:
+                    # use a more specific regex
+                    message_url = re.search(r"(?P<url>(discord.gg|discord.com)/[^\s]+)", message.content)
 
-                if message_url.group("url") not in config.SCAM:
-                    config.SCAM.append(message_url.group("url"))
-                    log.info("General scam blocked.")
-                    await scam_check_embed(self, message, message_url.group("url"))
+                if message_url:
+                    if message_url.group("url") not in config.SCAM:
+                        config.SCAM.append(message_url.group("url"))
+                        log.info("General scam blocked.")
+                        await scam_check_embed(self, message, message_url.group("url"))
+                else:
+                    log.warning("No message_url extracted from regexp")
+                    log.info("Possible scam blocked, no URL extracted")
+                    await scam_check_embed(self, message, "No url extracted")
+
 
                 # Commenting out the rest while testing
                 """
