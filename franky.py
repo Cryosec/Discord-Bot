@@ -93,20 +93,20 @@ if __name__ == "__main__":
 
 async def check_jac_timers(now):
     """Check which JAC timers have surpassed 14 days and remove from list."""
-    print("Checking if there are JAC logs to remove...")
+    #print("Checking if there are JAC logs to remove...")
 
     jac = database.getJac()
     for elem in jac:
         # entry_time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y')
-        entry_time = datetime.strptime(elem[2], "%b-%d-%Y %H:%M:%S")
+        entry_time = datetime.strptime(elem['date'], "%b-%d-%Y %H:%M:%S")
         delta = timedelta(days=14)
         newtime = entry_time + delta
 
         # check if 14 days have passed
         if newtime < now:
-            print(f"Removing entry for {elem[0]}")
+            print(f"Removing entry for {elem['user_id']}")
             #del jac[elem]
-            database.delJac(elem[0])
+            database.delJac(elem['user_id'])
 
 
 async def check_mute_timers(now, time_db, guild, channel, mem):
@@ -140,7 +140,7 @@ async def check_mute_timers(now, time_db, guild, channel, mem):
 
 async def check_ban_timers(now, time_db, guild, channel, mem):
     """Check which finished ban timers have been missed and remove the ban"""
-    ban_time = datetime.strptime(time_db[3], "%b-%d-%Y %H:%M:%S")
+    ban_time = datetime.strptime(time_db['endBan'], "%b-%d-%Y %H:%M:%S")
 
     # If timer ran out, unban user
     if ban_time < now:
@@ -192,30 +192,30 @@ async def check_timers():
     try:
         await check_jac_timers(now)
 
-        print("Checking if I missed some unbanning or unmuting...")
+        #print("Checking if I missed some unbanning or unmuting...")
         timers = database.getTimers()
 
         # Cycle database to check for timed events to resume
         for elem in timers:
             print(
-                elem[0] + "- Ban: " + str(elem[1]) + ", Mute: " + str(elem[2])
+                elem['user_id'] + "- Ban: " + str(elem['ban']) + ", Mute: " + str(elem['mute'])
             )
-            if elem[2]:
-                await check_mute_timers(now, elem, guild, channel, elem[0])
+            if elem['mute']:
+                await check_mute_timers(now, elem, guild, channel, elem['user_id'])
 
-            if elem[1]:
-                await check_ban_timers(now, elem, guild, channel, elem[0])
+            if elem['ban']:
+                await check_ban_timers(now, elem, guild, channel, elem['user_id'])
 
             # If there are no more timers for a user, there's no need to keep track of them
-            if not elem[2] and not elem[1]:
-                print(f"\nUser {elem[0]} has no more timers. Removing from db...")
+            if not elem['mute'] and not elem['ban']:
+                print(f"\nUser {elem['user_id']} has no more timers. Removing from db...")
                 database.delTimer(str(elem[0]))
 
-        print("Done! Waiting 60 minutes for next check...")
-        print("-----------")
+        #print("Done! Waiting 60 minutes for next check...")
+        #print("-----------")
     except:
         log.exception("Error while checking timers, waiting next loop...")
-        print("-----------")
+        #print("-----------")
 
 @tasks.loop(minutes=15)
 async def war_channel():
@@ -247,7 +247,7 @@ async def on_ready():
     )
     tz_IT = pytz.timezone("Europe/Rome")
     current_time = datetime.now(tz_IT).strftime("%b-%d-%Y %H:%M:%S")
-    print(f"Current time and date (UTC+1): {current_time}")
+    print(f"Current time and date (UTC+1): {current_time} UTC/Rome")
     print("-----------")
     await bot.wait_until_ready()
 

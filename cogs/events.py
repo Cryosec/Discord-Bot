@@ -191,6 +191,7 @@ class Events(commands.Cog):
                 if entry.target == after:
                     # Get who caused the update
                     author = entry.user
+                else: author = None
 
                 # Create button to undo timeout
                 undo_button = support.Untimeout()
@@ -272,8 +273,14 @@ async def check_spam_v2(self, message) -> bool:
 
     if scam_link is not None and "@everyone" in message.content:
 
-        #await message.respond("Your message has been removed as it violates our anti-spam filters", ephemeral=True)
-        await message.delete()
+        # Remove spam message
+        try:
+            await message.delete()
+            # Add to kill counter
+            self.database.addKillCount(str(message.author.id))
+
+        except Exception as err:
+            log.error("Unable to delete spam message: %s", err)
 
         if scam_link.group("url") not in config.SCAM:
             log.info("Possible spam detected: %s", message.content)
@@ -287,6 +294,13 @@ async def check_spam_v2(self, message) -> bool:
             # Send embed for moderators in the mod log channel
             await scam_check_embed(self, message, scam_link.group("url"))
         return True
+    elif scam_link is None and ("@everyone" in message.content or "@here" in message.content):
+        if any(x in message.content for x in config.NSFW):
+            try:
+                log.info("Possible NSFW spam detected: %s", message.content)
+                await scam_check_embed(self, message, "NSFW spam with no link")
+            except Exception as exc:
+                log.error("NSFW Spam filter error: %s", exc)
     return False
 
 async def check_jac(self, message):
@@ -315,7 +329,7 @@ async def check_jac(self, message):
         jac = self.database.getJac()
         #warn_users = self.database.getWarnUsers()
 
-        if str(message.author.id) in map(lambda x: x[0], jac):
+        if str(message.author.id) in map(lambda x: x['user_id'], jac):
 
             # DB logging happens within function
             await issue_warn(
@@ -324,6 +338,8 @@ async def check_jac(self, message):
                 f"**WARNING:** {message.author.mention}, you have already posted in the last 14 days.",
             )
             await message.delete()
+            # Add to kill counter
+            self.database.addKillCount(str(message.author.id))
 
         else:
             # Regexp the link
@@ -335,8 +351,7 @@ async def check_jac(self, message):
                 link = link.group("url")
 
                 # Check if link already in db
-                # TODO: check if this is correct
-                if link in map(lambda x: x[1], jac):
+                if link in map(lambda x: x['link'], jac):
 
                     # Issue warning as link already exists
                     await issue_warn(
@@ -345,6 +360,8 @@ async def check_jac(self, message):
                         f"**WARNING:** {message.author.mention}, ad has already been posted in the last 14 days.",
                     )
                     await message.delete()
+                    # Add to kill counter
+                    self.database.addKillCount(str(message.author.id))
                     return
 
             # Get timestamp
@@ -375,8 +392,12 @@ async def check_scam(self, message):
 
         if any(y in scam_msg.lower() for y in config.SCAMTEXT):
             try:
-                #await message.respond("Your message has been deleted as it violates our anti-scam filters", ephemeral=True)
+
                 await message.delete()
+
+                # Add to kill counter
+                self.database.addKillCount(str(message.author.id))
+
                 if scam_link.group("url") not in config.SCAM:
                     config.SCAM.append(scam_link.group("url"))
                     log.info("Nitro scam blocked.")
@@ -388,8 +409,11 @@ async def check_scam(self, message):
         # normal url scam check
         if any(x in scam_link.group("url") for x in config.SCAMURLS):
             try:
-                #await message.respond("Your message has been deleted as it violates our anti-scam filters", ephemeral=True)
+
                 await message.delete()
+
+                # Add to kill counter
+                self.database.addKillCount(str(message.author.id))
 
                 if scam_link.group("url") not in config.SCAM:
                     config.SCAM.append(scam_link.group("url"))
@@ -403,8 +427,11 @@ async def check_scam(self, message):
         scam_msg = message.content
 
         if any(y in scam_msg.lower() for y in config.SCAMTEXT):
-            #await message.respond("Your message has been deleted as it violates our anti-scam filters", ephemeral=True)
+
             await message.delete()
+
+            # Add to kill counter
+            self.database.addKillCount(str(message.author.id))
 
             if scam_msg not in config.SCAM:
                 config.SCAM.append(scam_msg)
@@ -421,6 +448,14 @@ async def scam_check_embed(self, message, filtered_url):
     message      --  message to check
     filtered_url -- URL that was filtered from the message
     """
+
+    # Temporarily timeout the message author
+    try:
+        await message.author.timeout_for(duration=timedelta(days=1),
+                                        reason="Temporary timeout for spam review")
+    except Exception as err:
+        log.error("Couldn't timeout user for spam review: %s", err)
+
     # Define a list of two buttons that will be displayed under the embed
     # add filtered_url to custom_id to avoid action on pre-existing buttons
     ban_button = support.Scam(filtered_url)
@@ -431,7 +466,14 @@ async def scam_check_embed(self, message, filtered_url):
         description="Review the blocked message ",
         colour=config.RED,
     )
-    embed.add_field(name="Suspicious message", value=message.content, inline=False)
+
+    msg = (
+            (message.content[:1020] + "...")
+            if len(message.content) > 1024
+            else message.content
+            )
+
+    embed.add_field(name="Suspicious message", value=msg, inline=False)
     embed.add_field(name="Suspicious link", value=filtered_url)
     embed.add_field(name="Channel", value=message.channel.mention)
     embed.add_field(name="Author", value=message.author.mention)
@@ -446,13 +488,6 @@ async def scam_check_embed(self, message, filtered_url):
     channel = message.guild.get_channel(config.LOG_CHAN)
 
     await channel.send(embed=embed, view=ban_button)
-
-    # Temporarily timeout the message author
-    try:
-        await message.author.timeout_for(duration=datetime.timedelta(days=1),
-                                         reason="Temporary timeout for spam review")
-    except:
-        log.error("Couldn't timeout user for spam review.")
 
     # Wait for a mod to press a button
     await ban_button.wait()
@@ -469,7 +504,7 @@ async def scam_check_embed(self, message, filtered_url):
                 colour=config.GREEN,
             )
             new_embed.add_field(
-                name="Suspicious message", value=message.content, inline=False
+                name="Suspicious message", value=msg, inline=False
             )
             new_embed.add_field(name="Suspicious link", value=filtered_url)
             new_embed.add_field(name="Author", value=message.author.mention)
@@ -503,6 +538,13 @@ async def scam_check_embed(self, message, filtered_url):
         new_embed.add_field(
             name="Suspicious message", value=message.content, inline=False
         )
+
+        filtered_url = (
+            (filtered_url[:1020] + "...")
+            if len(filtered_url) > 1024
+            else filtered_url
+            )
+
         new_embed.add_field(name="Suspicious link", value=filtered_url)
         new_embed.add_field(name="Author", value=message.author.mention)
         new_embed.add_field(
@@ -514,7 +556,7 @@ async def scam_check_embed(self, message, filtered_url):
 
         await ban_button.inter.message.edit(embed=new_embed, view=None)
         try:
-            message.author.remove_timeout(reason="Spam review completed. Timeout removed")
+            await message.author.remove_timeout(reason="Spam review completed. Timeout removed")
             config.SCAM.remove(filtered_url)
             config.SCAM_USER.remove(message.author.id)
         except:
@@ -531,7 +573,7 @@ async def check_invites(self, message):
     is not config.CLAN_CHAN and warn the user who posted it. If the URL is in
     config.INVITE_WHITELIST, the message is ignored.
     """
-    if "discord.gg/" in message.content or "discord.com/" in message.content:
+    if "discord.gg/" in message.content or "discord.com/" in message.content or "discordapp.com/invite" in message.content:
         #Stop if link is to another channel, maybe find a way to make this work better
         if "discord.com/channels" in message.content:
             return
@@ -550,6 +592,9 @@ async def check_invites(self, message):
 
                 # Delete message
                 await message.delete()
+
+                # Add to kill counter
+                self.database.addKillCount(str(message.author.id))
 
                 # Check if invite is in banlist - immediately ban
                 if any(url in message.content for url in config.INVITE_BANLIST):
@@ -658,6 +703,9 @@ async def check_blacklist(self, message):
             # Delete message
             await message.delete()
 
+            # Add to kill counter
+            self.database.addKillCount(str(message.author.id))
+
 
 async def check_msg_link(self, message):
     """Check if message contains a URL to another message in the same server and embed it.
@@ -704,7 +752,7 @@ async def check_msg_link(self, message):
         # Define remove button
         remove_button = support.Remove()
 
-        embed.set_thumbnail(url=msg.author.avatar.url)
+        #embed.set_thumbnail(url=msg.author.avatar.url)
         embed.add_field(name="Channel", value=msg.channel)
         embed.add_field(
             name="Time", value=msg.created_at.strftime(TIME_FORMAT) + " UTC"
@@ -739,7 +787,7 @@ async def issue_warn(self, message, warning):
 
     warn_user = self.database.getWarnUsers()
 
-    if str(message.author.id) in map(lambda x: x[0], warn_user):
+    if str(message.author.id) in map(lambda x: x['user_id'], warn_user):
 
         self.database.addWarning(str(message.author.id), str(message.author.name), reason)
 

@@ -1,4 +1,5 @@
 /.env
+/.pnpm-store
 /Dockerfile
 /__pycache__
 /config.py
@@ -12,3 +13,6 @@
 lord-franklin-bot.xml
 .vscode
 shelve2maria.py
+old_Dockerfile
+database.old
+

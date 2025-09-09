@@ -780,6 +780,20 @@ class Moderation(commands.Cog):
 
         await ctx.send(content=lotto.mention, embed=embed)
 
+    # Lotto
+    @commands.command(name="tim")
+    @commands.guild_only()
+    async def tim(self, ctx):
+
+        await ctx.message.delete(reason = "!tim command invocation")
+
+        tim = await self.bot.get_or_fetch_user(config.TIM_ID)
+
+        embed = discord.Embed()
+        embed.set_image(url="https://m.media-amazon.com/images/M/MV5BMmIyNDQwODMtMTI4Yy00ZTY5LWEyZmYtNTQ0NGUzMjdhMGJiXkEyXkFqcGdeQXVyMTE0MzYxMjM5._V1_.jpg")
+
+        await ctx.send(content=tim.mention, embed=embed)
+
     # Error handling
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):

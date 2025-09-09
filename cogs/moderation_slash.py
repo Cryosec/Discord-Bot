@@ -410,9 +410,9 @@ class ModerationSlash(commands.Cog):
                         ),
                         colour=config.GREEN,
                     )
-                    embed.add_field(name="Warnings:", value=warn_user[0][1])
-                    embed.add_field(name="Kicks:", value=warn_user[0][2])
-                    embed.add_field(name="Bans:", value=warn_user[0][3])
+                    embed.add_field(name="Warnings:", value=warn_user['warnings'])
+                    embed.add_field(name="Kicks:", value=warn_user['kicks'])
+                    embed.add_field(name="Bans:", value=warn_user['bans'])
                     embed.add_field(
                         name="Joined:",
                         value=member.joined_at.strftime("%b-%d-%Y %H:%M:%S"),
@@ -461,9 +461,9 @@ class ModerationSlash(commands.Cog):
                         ),
                         colour=config.GREEN,
                     )
-                    embed.add_field(name="Warnings:", value=warn_user[0][1])
-                    embed.add_field(name="Kicks:", value=warn_user[0][2])
-                    embed.add_field(name="Bans:", value=warn_user[0][3])
+                    embed.add_field(name="Warnings:", value=warn_user['warnings'])
+                    embed.add_field(name="Kicks:", value=warn_user['kicks'])
+                    embed.add_field(name="Bans:", value=warn_user['bans'])
                     embed.add_field(name="Joined:", value="N/A")
                     embed.set_footer(text=config.FOOTER)
 
@@ -507,7 +507,7 @@ class ModerationSlash(commands.Cog):
             )
             embed.add_field(name="User:", value=f"{member}")
             embed.add_field(name="Issued by:", value=f"{ctx.author}")
-            embed.add_field(name="Total Warnings:", value=warn_users[0][1])
+            embed.add_field(name="Total Warnings:", value=warn_users['warnings'])
             embed.set_footer(text=config.FOOTER)
 
             await channel.send(content=None, embed=embed)
@@ -593,7 +593,7 @@ class ModerationSlash(commands.Cog):
         if len(jac) > 0:
             tz_TX = pytz.timezone("US/Central")
             now = datetime.now(tz_TX)
-            dt = datetime.strptime(jac[0][2], "%b-%d-%Y %H:%M:%S")
+            dt = datetime.strptime(jac[0]['date'], "%b-%d-%Y %H:%M:%S")
             dt = dt.replace(tzinfo=tz_TX)
 
             end = dt + timedelta(days=14)
@@ -602,10 +602,10 @@ class ModerationSlash(commands.Cog):
 
             embed = discord.Embed(
                 title=f"User {member}",
-                description=jac[0][1],
+                description=jac[0]['link'],
                 colour=config.GREEN,
             )
-            embed.add_field(name="Timestamp", value=jac[0][2])
+            embed.add_field(name="Timestamp", value=jac[0]['date'])
             embed.add_field(name="Time left", value=str(delta), inline=False)
             embed.set_footer(text=config.FOOTER)
 
@@ -760,6 +760,23 @@ class ModerationSlash(commands.Cog):
         duration = timedelta(minutes=minutes)
         await member.timeout_for(duration, reason=reason)
         await ctx.respond(f"Member {member} timed out for {minutes} minutes.")
+
+    # /kc
+    @slash_command(guild_ids=[config.GUILD], name="kc", default_permission=False)
+    @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
+    async def killcount(
+        self,
+        ctx,
+        member: Option(discord.Member, "Counter for Member, defaults to all", required=False)
+    ):
+        """Get total kill count or specific count for a member"""
+        if not member:
+            counter = self.database.getKillCount("*")
+            await ctx.respond(f"Total kill counter is {counter}.")
+        else:
+            counter = self.database.getKillCount(str(member.id))
+            await ctx.respond(f"Kill count for member {member} is {counter}.")
+
 
 
 def setup(bot):

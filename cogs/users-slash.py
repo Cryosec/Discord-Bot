@@ -5,6 +5,7 @@ import random
 import discord
 from discord.ext import commands
 from discord.commands import slash_command
+from datetime import timedelta
 import config
 import cogs.moderation_slash as mod
 
@@ -129,15 +130,16 @@ class UsersSlash(commands.Cog):
         role = ctx.guild.get_role(config.MOD_ID)
 
         if role in ctx.author.roles:
-            await ctx.respond("Don\t be daft. Mods can't play.")
+            await ctx.respond("Don't be daft. Mods can't play.")
             return
 
         num = random.randint(1, 6)
         if num == 1:
             await ctx.respond("*Bang*")
-            await mod.ModerationSlash().tempban_user(
-                ctx, ctx.author, "24h", reason="Russian roulette loser."
-            )
+            await ctx.author.timeout_for(duration=timedelta(minutes=60), reason="Russian roulette loser.")
+            #await mod.ModerationSlash().tempban_user(
+            #    ctx, ctx.author, "24h", reason="Russian roulette loser."
+            #)
         else:
             await ctx.respond("*Click*")
 

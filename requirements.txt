@@ -1,3 +1,5 @@
+requests
+redis
 python-dotenv
 pytz
 asyncio
@@ -5,3 +7,7 @@ cogwatch
 sqlalchemy
 mariadb
 py-cord
+Flask>=2.0
+Flask-Session
+gunicorn>=20.0
+gevent

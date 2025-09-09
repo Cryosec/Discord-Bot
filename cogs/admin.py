@@ -3,6 +3,7 @@
 from discord.ext import commands
 import config, support
 import importlib
+import random
 
 
 class Admin(commands.Cog):
@@ -81,6 +82,25 @@ class Admin(commands.Cog):
         #test = await guild.fetch_channel(config.MCMD_CHAN)
 
         await chann.send(config.DAYZ_ANNOUNCE, view=support.Survivor())
+
+    @commands.command(name="weird", hidden=True)
+    @commands.is_owner()
+    async def weird(self, ctx):
+
+        guild = await self.bot.fetch_guild(config.GUILD)
+        chann = await guild.fetch_channel(config.GENERAL_CHAN)
+
+        await chann.send(random.choice(config.WEIRD_MESSAGES))
+
+    @commands.command(name="speak", hidden=True)
+    @commands.is_owner()
+    async def speak(self, ctx, *, msg: str):
+
+        guild = await self.bot.fetch_guild(config.GUILD)
+        chann = await guild.fetch_channel(config.GENERAL_CHAN)
+
+        await chann.send(msg)
+
 
 def setup(bot):
     bot.add_cog(Admin(bot))
