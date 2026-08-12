@@ -26,3 +26,21 @@ coverage.xml
 .hypothesis
 old_Dockerfile
 database.old
+.continue/
+.pnpm-store/
+.vscode/
+.idea/
+.DS_Store
+
+# Runtime session data (regenerated at runtime)
+**/.flask_session/
+
+# Frontend build output — rebuilt inside the image by `npm run build`
+webui/frontend/dist/
+webui/frontend/dist-ssr/
+*.local
+
+# Legacy / host-specific files not needed in the image
+webui/backend/oldapp.py
+lord-franklin-bot.xml
+todo.md

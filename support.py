@@ -4,6 +4,9 @@ import discord
 from datetime import datetime
 import pytz
 import config
+import logging
+from logging.handlers import RotatingFileHandler
+import os
 
 # Define a simple view with two buttons, confirm and cancel
 class Confirm(discord.ui.View):
@@ -191,3 +194,42 @@ class Survivor(discord.ui.View):
             await interaction.response.send_message("Sad to see you go! You can join back any time.", ephemeral=True)
         else:
             await interaction.response.send_message("You're not a Survivor! Can't remove a role you don't have.", ephemeral=True)
+
+
+
+def get_logger(name):
+    """Configura e restituisce un logger standardizzato."""
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+
+    # Evita duplicati: se il logger ha già handler, non aggiungerne altri
+    if logger.handlers:
+        return logger
+
+    # Evita propagazione al root logger (rimuove il 4° log duplicato)
+    logger.propagate = False
+
+    # Assicura che la cartella logs esista
+    if not os.path.exists("logs"):
+        os.makedirs("logs")
+
+    log_formatter = logging.Formatter("%(name)s - %(asctime)s:%(levelname)s: %(message)s")
+
+    # File Handler
+    file_handler = RotatingFileHandler(
+        filename=f"logs/{name}.log",
+        mode="a",
+        maxBytes=20000,
+        backupCount=5,
+        encoding="utf-8"
+    )
+    file_handler.setFormatter(log_formatter)
+
+    # Console Handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(log_formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    return logger

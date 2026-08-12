@@ -1,8 +1,6 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 import re
-import logging
-from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 import pytz
 import discord
@@ -13,25 +11,7 @@ import cogs.database as db
 
 
 #Setup module logging
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-
-log_formatter = logging.Formatter("%(name)s - %(asctime)s:%(levelname)s: %(message)s")
-
-file_handler = RotatingFileHandler(
-    filename=f"logs/{__name__}.log",
-    mode="a",
-    maxBytes=20000,
-    backupCount=5,
-    encoding="utf-8")
-file_handler.setFormatter(log_formatter)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(log_formatter)
-
-log.addHandler(file_handler)
-log.addHandler(console_handler)
-
+log = support.get_logger(__name__)
 
 tz_TX = pytz.timezone("US/Central")
 TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
@@ -51,6 +31,21 @@ class Events(commands.Cog):
         """Initialize Events cog."""
         self.bot = bot
         self.database = db.Database(self.bot)
+
+
+    # Member join
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        """Add new members to the database for monitoring."""
+        if member.bot:
+            return
+
+        try:
+            self.database.addNewUser(str(member.id))
+            log.info("New user %s added to monitoring list.", member)
+        except Exception as e:
+            log.error("Error adding new user %s to DB: %s", member, e)
+
 
 
     @commands.Cog.listener()
@@ -247,11 +242,24 @@ class Events(commands.Cog):
             )
             return
 
+        # Check if new user is sending links
+        #if await check_new_member_links(self, message):
+        #    return
+
+        # Check for invite URLs
         await check_invites(self, message)
+
+        # Check for spam messages
         if not await check_spam_v2(self, message):
             await check_scam(self, message)
+
+        # Check for Join-A-Clan stuff
         await check_jac(self, message)
+
+        # Word Blacklist filter
         await check_blacklist(self, message)
+
+        # Stuff on links in messages
         await check_msg_link(self, message)
 
 
@@ -834,3 +842,67 @@ async def issue_warn(self, message, warning):
 
     channel = message.guild.get_channel(config.LOG_CHAN)
     await channel.send(content=None, embed=embed)
+
+
+async def check_new_member_links(self, message) -> bool:
+    """Check if message is from a new user and contains links."""
+    # Check if user is in monitoring list
+    count = self.database.checkNewUser(str(message.author.id))
+
+    if count is not None:
+        # Regex to find any http/https link
+        link_found = re.search(r"https?://[^\s]+", message.content)
+
+        if link_found:
+            # Find all links in the message
+            all_links = re.findall(r"https?://[^\s]+", message.content)
+
+            # Check if all links are internal Discord message links to this server
+            discord_msg_pattern = re.compile(
+                rf"https?://(?:www\.)?discord\.com/channels/{message.guild.id}/\d+/\d+"
+            )
+            all_internal = all(discord_msg_pattern.match(link) for link in all_links)
+
+            if all_internal:
+                # All links are internal Discord message links to this server, allow them
+                return False
+
+            try:
+                await message.delete()
+
+                # Generate log embed
+                embed = discord.Embed(
+                    title="New User link removed",
+                    description=f"User {message.author.mention} is new to the server.\n\nLinks not allowed yet.",
+                    colour=config.YELLOW
+                )
+                embed.add_field(name="User:", value=f"{message.author}")
+                embed.add_field(name="Issued by:", value=f"{self.bot.user.mention}")
+                embed.add_field(name="Message:",
+                                value=f"{(message.content[:1020] + '...') if len(message.content) > 1024 else message.content}",
+                                inline=False)
+                embed.set_footer(text=config.FOOTER)
+
+                channel = message.guild.get_channel(config.LOG_CHAN)
+                await channel.send(content=None, embed=embed)
+
+                # Send DM to user explaining why
+                await message.author.send(
+                    f"Welcome to the server! For safety reasons, links are not allowed when you are new to the server. "
+                    f"Your message in {message.channel.mention} has been removed."
+                )
+            except Exception as e:
+                log.warning("Could not DM user %s or delete message: %s", message.author, e)
+
+            # Return True to indicate message was handled/deleted
+            return True
+        else:
+            # No link found, increment their safe message count
+            if count + 1 >= 5:
+                self.database.removeNewUser(str(message.author.id))
+                log.info("User %s has passed the new user check.", message.author)
+            else:
+                self.database.incrementNewUser(str(message.author.id))
+            return False
+
+    return False

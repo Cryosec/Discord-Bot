@@ -1,18 +1,34 @@
-/.env
-/.pnpm-store
-/Dockerfile
-/__pycache__
+# ─── Secrets & local config (provided at runtime via bind-mount, never committed) ───
+.env
+webui/backend/.env
 /config.py
-/todo.md
-/cogs/__pycache__
+
+# ─── Python ───
+__pycache__/
+*.py[cod]
+
+# ─── Bot runtime data & logs ───
+/logs
 /base
 /scripts
-/logs
 /botenv
-/webui
-lord-franklin-bot.xml
-.vscode
-shelve2maria.py
+
+# ─── Web UI ───
+# node_modules and dist are covered by webui/frontend/.gitignore
+webui/backend/.flask_session/
+webui/backend/oldapp.py
+.pnpm-store/
+
+# ─── Deployment / host-specific files (not for VCS) ───
+/Dockerfile
 old_Dockerfile
+lord-franklin-bot.xml
+shelve2maria.py
 database.old
 
+# ─── Editor / tooling ───
+.vscode
+.continue/
+/todo.md
+
+# NOTE: webui/ is intentionally tracked (previously ignored as /webui)

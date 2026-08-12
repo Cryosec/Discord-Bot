@@ -4,38 +4,22 @@ import sys # For sys.exit on critical errors
 from dotenv import load_dotenv
 import mariadb
 from discord.ext import commands
-import logging
-from logging.handlers import RotatingFileHandler
+import support
 
 # --- Logging Setup ---
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO) # Or DEBUG for more verbose pool info
-log_formatter = logging.Formatter("%(name)s - %(asctime)s:%(levelname)s: %(message)s")
-
+log = support.get_logger(__name__)
 # Ensure logs directory exists
-log_dir = "logs"
-if not os.path.exists(log_dir):
-    try:
-        os.makedirs(log_dir)
-    except OSError as e:
-        # Use root logger temporarily if module logger fails early
-        logging.basicConfig(level=logging.ERROR)
-        logging.critical(f"Failed to create log directory {log_dir}: {e}")
-        sys.exit("Error: Could not create log directory.")
+#log_dir = "logs"
+#if not os.path.exists(log_dir):
+#    try:
+#        os.makedirs(log_dir)
+#    except OSError as e:
+#        # Use root logger temporarily if module logger fails early
+#        logging.basicConfig(level=logging.ERROR)
+#        logging.critical(f"Failed to create log directory {log_dir}: {e}")
+#        sys.exit("Error: Could not create log directory.")
 
-file_handler = RotatingFileHandler(
-    filename=os.path.join(log_dir, f"{__name__}.log"),
-    mode="a",
-    maxBytes=20000,
-    backupCount=5,
-    encoding="utf-8")
-file_handler.setFormatter(log_formatter)
 
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(log_formatter)
-
-log.addHandler(file_handler)
-log.addHandler(console_handler)
 
 # --- Load Environment Variables ---
 load_dotenv()
@@ -468,6 +452,31 @@ class Database(commands.Cog):
             if conn:
                 try: conn.close()
                 except: pass
+
+
+### NEW USER TRACKING ###
+    def addNewUser(self, user_id: str):
+        """Adds a new user to the tracking table."""
+        statement = "INSERT IGNORE INTO new_users (user_id, msg_count) VALUES (%s, 0)"
+        return self._execute_query(statement, params=(user_id,), commit=True)
+
+    def checkNewUser(self, user_id: str):
+        """Checks if a user is in the new_users table and returns their message count."""
+        statement = "SELECT msg_count FROM new_users WHERE user_id=%s"
+        result = self._execute_query(statement, params=(user_id,), fetch='one')
+        if result:
+            return result['msg_count']
+        return None
+
+    def incrementNewUser(self, user_id: str):
+        """Increments the message count for a new user."""
+        statement = "UPDATE new_users SET msg_count = msg_count + 1 WHERE user_id=%s"
+        return self._execute_query(statement, params=(user_id,), commit=True)
+
+    def removeNewUser(self, user_id: str):
+        """Removes a user from the new_users table."""
+        statement = "DELETE FROM new_users WHERE user_id=%s"
+        return self._execute_query(statement, params=(user_id,), commit=True)
 
 
     ### KILL BOARD DATABASE ###

@@ -15,29 +15,16 @@ import support
 import cogs.database as db
 
 #Setup module logging
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-
-log_formatter = logging.Formatter("%(name)s - %(asctime)s:%(levelname)s: %(message)s")
-
-file_handler = RotatingFileHandler(
-    filename=f"logs/{__name__}.log",
-    mode="a",
-    maxBytes=20000,
-    backupCount=5,
-    encoding="utf-8")
-file_handler.setFormatter(log_formatter)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(log_formatter)
-
-log.addHandler(file_handler)
-log.addHandler(console_handler)
+log = support.get_logger(__name__)
 
 # cogwatch logger
 #Setup module logging
 watch_log = logging.getLogger("cogwatch")
 watch_log.setLevel(logging.INFO)
+
+log_formatter = logging.Formatter("%(name)s - %(asctime)s:%(levelname)s: %(message)s")
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
 
 watch_file_handler = RotatingFileHandler(
     filename="logs/cogwatch.log",
