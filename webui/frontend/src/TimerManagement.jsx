@@ -91,27 +91,49 @@ function TimerManagement() {
   };
   // --- End Pagination Logic ---
 
-  // Calculate end date based on duration input for the add form
+  // Calculate end date based on duration input for the add form.
+  // The bot stores and compares timer end times as US/Central wall-clock strings
+  // in the format "%b-%d-%Y %H:%M:%S" (e.g. "Aug-12-2026 14:30:00") and parses
+  // them with datetime.strptime in check_timers. We MUST emit that exact format
+  // and timezone; anything else (e.g. an ISO/UTC string) raises ValueError in
+  // check_timers, which aborts the whole expiry loop so no timers ever expire.
   const calculateEndDate = () => {
-    const now = new Date();
+    const target = new Date();
     const value = parseInt(durationValue, 10);
     if (isNaN(value) || value <= 0) return null; // Basic validation
 
     switch (durationUnit) {
       case 'minutes':
-        now.setMinutes(now.getMinutes() + value);
+        target.setMinutes(target.getMinutes() + value);
         break;
       case 'hours':
-        now.setHours(now.getHours() + value);
+        target.setHours(target.getHours() + value);
         break;
       case 'days':
-        now.setDate(now.getDate() + value);
+        target.setDate(target.getDate() + value);
         break;
       default:
         return null; // Should not happen with select dropdown
     }
-    // Format for MariaDB DATETIME (YYYY-MM-DD HH:MM:SS)
-    return now.toISOString().slice(0, 19).replace('T', ' ');
+
+    // Render the target instant as US/Central wall-clock time, then assemble the
+    // bot's "%b-%d-%Y %H:%M:%S" format. en-US "short" month matches Python's %b
+    // (Jan, Feb, ... Dec); h23 guarantees a 00-23 hour.
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(target).reduce((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+
+    return `${parts.month}-${parts.day}-${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
   };
 
   // Handler for submitting the add timer form
@@ -179,7 +201,7 @@ function TimerManagement() {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     try { return new Date(dateString).toLocaleString('it-IT'); }
-    catch (e) { return dateString; }
+    catch { return dateString; }
   };
 
   return (
@@ -268,9 +290,20 @@ function TimerManagement() {
                      {timer.mute && <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Mute</span>}
                      {timer.ban && <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Ban</span>}
                    </td>
-                   {/* End Time Cell */}
-                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                     {formatDate(timer.mute ? timer.endMute : timer.endBan)}
+                   {/* End Time Cell (show both when the user has a mute AND a ban) */}
+                   <td className="px-6 py-4 text-sm text-gray-600">
+                     {timer.mute && (
+                       <div className="whitespace-nowrap">
+                         {timer.ban && <span className="font-medium">Mute: </span>}
+                         {formatDate(timer.endMute)}
+                       </div>
+                     )}
+                     {timer.ban && (
+                       <div className="whitespace-nowrap">
+                         {timer.mute && <span className="font-medium">Ban: </span>}
+                         {formatDate(timer.endBan)}
+                       </div>
+                     )}
                    </td>
                    {/* Actions Cell (Delete Button) */}
                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

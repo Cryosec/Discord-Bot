@@ -8,7 +8,7 @@ from functools import wraps
 import uuid
 
 # Flask and Extensions
-from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for, abort
+from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for, abort, g
 from flask_session import Session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -147,33 +147,33 @@ except ValueError:
     log.critical(f"Invalid DB_PORT value: '{DB_PORT_STR}'. Must be an integer.")
     sys.exit("Error: Invalid DB_PORT.")
 
-# Global connection and cursor (manage carefully in production)
-# Consider using connection pooling for more robust applications
-conn = None
-cur = None
+# Database connections are per-request (stored on flask.g), never module-level
+# globals. Under gunicorn's gevent worker many requests run concurrently in one
+# worker process; a shared connection/cursor would let those greenlets clobber
+# each other's cursor state and let one request's teardown close a connection
+# another request is mid-transaction on. flask.g is request/greenlet-scoped, so
+# each request gets its own isolated connection.
 
 def get_db_connection():
-    """Establishes or returns the existing database connection."""
-    global conn, cur
+    """Establishes (or returns) this request's own database connection."""
+    conn = g.get('db_conn')
+    cur = g.get('db_cur')
+    if conn is not None and cur is not None:
+        return conn, cur
     try:
-        # Check if connection is alive, otherwise reconnect
-        if conn is None or not conn.is_connected():
-            log.debug("Connecting to MariaDB...")
-            conn = mariadb.connect(
-                user=DB_USER,
-                password=DB_PASS,
-                host=DB_HOST,
-                port=DB_PORT,
-                database=DB_NAME,
-                autocommit=False # Explicitly manage commits/rollbacks per request
-            )
-            # conn.auto_reconnect = True # auto_reconnect is often handled by the pool or framework
-            cur = conn.cursor(dictionary=True) # Use dictionary cursor for easier JSON conversion
-            log.debug("Connection to database successful.")
-        # Ensure cursor is valid
-        elif cur is None or cur.closed:
-            cur = conn.cursor(dictionary=True)
-            log.debug("Re-established cursor.")
+        log.debug("Connecting to MariaDB...")
+        conn = mariadb.connect(
+            user=DB_USER,
+            password=DB_PASS,
+            host=DB_HOST,
+            port=DB_PORT,
+            database=DB_NAME,
+            autocommit=False # Explicitly manage commits/rollbacks per request
+        )
+        cur = conn.cursor(dictionary=True) # Use dictionary cursor for easier JSON conversion
+        g.db_conn = conn
+        g.db_cur = cur
+        log.debug("Connection to database successful.")
         return conn, cur
     except mariadb.Error as db_error:
         log.exception("Error connecting to MariaDB platform: %s", db_error)
@@ -183,16 +183,11 @@ def get_db_connection():
         return None, None
 
 def close_db_connection(exception=None):
-    """Closes the database connection (if open)."""
-    global conn, cur
-    # Note: Closing should ideally happen after commit/rollback decision
-    # The teardown context handles this generally
-    db_conn_to_close = conn
-    db_cur_to_close = cur
-    conn = None # Reset globals immediately
-    cur = None
+    """Closes this request's database connection (if open)."""
+    db_cur_to_close = g.pop('db_cur', None)
+    db_conn_to_close = g.pop('db_conn', None)
 
-    if db_cur_to_close is not None and not db_cur_to_close.closed:
+    if db_cur_to_close is not None:
         try:
             db_cur_to_close.close()
             log.debug("DB cursor closed.")
@@ -235,7 +230,7 @@ def handle_db_error(conn, error, failure_message_prefix, log_context, status_cod
     """Logs error, rolls back transaction, and returns error response."""
     log.exception(f"{log_context}: Database operation failed: %s", error)
     try:
-        if conn and conn.is_connected():
+        if conn:
             conn.rollback()
             log.warning(f"{log_context}: Transaction rolled back due to operation error.")
     except mariadb.Error as rb_error:
