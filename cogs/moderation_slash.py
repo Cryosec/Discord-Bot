@@ -18,12 +18,51 @@ log = support.get_logger(__name__)
 # change it in Server Settings > Integrations. The real check is has_any_role.
 MOD_PERMISSIONS = discord.Permissions(manage_messages=True)
 
+DURATION_UNITS = {
+    "w": ("weeks", timedelta(weeks=1)),
+    "d": ("days", timedelta(days=1)),
+    "h": ("hours", timedelta(hours=1)),
+    "m": ("minutes", timedelta(minutes=1)),
+    "s": ("seconds", timedelta(seconds=1)),
+}
+
+
+def parse_duration(duration: str):
+    """Parse a duration like "1w2d3h4m5s". Returns (timedelta, text), None if invalid."""
+    mods = re.findall(r"([0-9]+?[wdhms])+?", duration)
+    if not mods:
+        return None
+    delta = timedelta(0)
+    dur = []
+    for x in mods:
+        name, unit = DURATION_UNITS[x[-1]]
+        delta += unit * int(x[:-1])
+        dur.append(f"{x[:-1]} {name}")
+    return delta, " ".join(dur)
+
 
 class ModerationSlash(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
         self.database = db.Database(self.bot)
+
+    def end_timer(self, user_id: str, kind: str, end: str = None) -> bool:
+        """End the "mute" or "ban" timer of a user. False if it is not running.
+
+        One row holds both timers: delete the row only when the other timer is
+        not running, as check_timers does. With `end`, act only if the stored end
+        is still `end`: a newer command or check_timers can have replaced it.
+        """
+        end_key, other = ("endMute", "ban") if kind == "mute" else ("endBan", "mute")
+        row = next((r for r in self.database.getTimers() if str(r['user_id']) == user_id), None)
+        if row is None or not row[kind] or (end is not None and row[end_key] != end):
+            return False
+        if row[other]:
+            (self.database.endTimerMute if kind == "mute" else self.database.endTimerBan)(user_id)
+        else:
+            self.database.delTimer(user_id)
+        return True
 
     # /mute Command
     @slash_command(guild_ids=[config.GUILD], name="mute", default_member_permissions=MOD_PERMISSIONS)
@@ -38,7 +77,8 @@ class ModerationSlash(commands.Cog):
         channel = ctx.guild.get_channel(config.LOG_CHAN)
         role = ctx.guild.get_role(config.MUTE_ID)
 
-        if "a" in duration:
+        # "a" (the default) is an indefinite mute. "2days" is a duration.
+        if duration.strip().lower() == "a":
 
             await member.add_roles(role)
             log.info("Muting %s indefinitely", member)
@@ -64,44 +104,14 @@ class ModerationSlash(commands.Cog):
 
         else:
             tz_TX = pytz.timezone("US/Central")
-            now = datetime.now(tz_TX)
-            end = now
-            delta = timedelta(0)
-            mods = re.findall(r"([0-9]+?[wdhms])+?", duration)
+            parsed = parse_duration(duration)
 
-            if not mods:
+            if parsed is None:
                 await ctx.respond("**ERROR**: `duration` format is incorrect.")
                 return
 
-            dur = ""
-            for x in mods:
-                if "w" in x:
-                    y = x[0:-1]
-                    end = end + timedelta(weeks=int(y))
-                    delta = delta + timedelta(weeks=int(y))
-                    dur = dur + y + " weeks "
-                elif "d" in x:
-                    y = x[0:-1]
-                    end = end + timedelta(days=int(y))
-                    delta = delta + timedelta(days=int(y))
-                    dur = dur + y + " days "
-                elif "h" in x:
-                    y = x[0:-1]
-                    end = end + timedelta(hours=int(y))
-                    delta = delta + timedelta(hours=int(y))
-                    dur = dur + y + " hours "
-                elif "m" in x:
-                    y = x[0:-1]
-                    end = end + timedelta(minutes=int(y))
-                    delta = delta + timedelta(minutes=int(y))
-                    dur = dur + y + " minutes "
-                elif "s" in x:
-                    y = x[0:-1]
-                    end = end + timedelta(seconds=int(y))
-                    delta = delta + timedelta(seconds=int(y))
-                    dur = dur + y + " seconds "
-
-            end_string = end.strftime("%b-%d-%Y %H:%M:%S")
+            delta, dur = parsed
+            end_string = (datetime.now(tz_TX) + delta).strftime("%b-%d-%Y %H:%M:%S")
 
             self.database.addTimerMute(str(member.id), end_string)
 
@@ -116,7 +126,6 @@ class ModerationSlash(commands.Cog):
                 )
             )
 
-            dur = dur[0:-1]
             embed = discord.Embed(
                 title="Muting issued!",
                 description=f"A duration of `{dur}` was specified.",
@@ -130,10 +139,11 @@ class ModerationSlash(commands.Cog):
             await channel.send(content=None, embed=embed)
 
             await asyncio.sleep(int(delta.total_seconds()))
+            # A newer /mute, an /unmute or check_timers can have ended this timer
+            if not self.end_timer(str(member.id), "mute", end_string):
+                return
             await member.remove_roles(role)
             log.info("Timer ended - User %s has been unmuted", member)
-
-            self.database.delTimer(str(member.id))
 
             embed = discord.Embed(
                 title="Timed mute complete",
@@ -158,7 +168,7 @@ class ModerationSlash(commands.Cog):
             await member.remove_roles(role)
             log.info("User %s was unmuted", member)
 
-            self.database.delTimer(str(member.id))
+            self.end_timer(str(member.id), "mute")
 
             await ctx.respond(
                 embed=discord.Embed(
@@ -245,48 +255,17 @@ class ModerationSlash(commands.Cog):
                 return
             else:
                 tz_TX = pytz.timezone("US/Central")
-                now = datetime.now(tz_TX)
-                end = now
-                delta = timedelta(0)
-                mods = re.findall(r"([0-9]+?[wdhms])+?", duration)
+                parsed = parse_duration(duration)
 
-                if not mods:
+                if parsed is None:
                     await ctx.respond("**ERROR**: `duration` format is incorrect.", ephemeral = True)
                     return
 
-                dur = ""
-                for x in mods:
-                    if "w" in x:
-                        y = x[0:-1]
-                        end = end + timedelta(weeks=int(y))
-                        delta = delta + timedelta(weeks=int(y))
-                        dur = dur + y + " weeks "
-                    elif "d" in x:
-                        y = x[0:-1]
-                        end = end + timedelta(days=int(y))
-                        delta = delta + timedelta(days=int(y))
-                        dur = dur + y + " days "
-                    elif "h" in x:
-                        y = x[0:-1]
-                        end = end + timedelta(hours=int(y))
-                        delta = delta + timedelta(hours=int(y))
-                        dur = dur + y + " hours "
-                    elif "m" in x:
-                        y = x[0:-1]
-                        end = end + timedelta(minutes=int(y))
-                        delta = delta + timedelta(minutes=int(y))
-                        dur = dur + y + " minutes "
-                    elif "s" in x:
-                        y = x[0:-1]
-                        end = end + timedelta(seconds=int(y))
-                        delta = delta + timedelta(seconds=int(y))
-                        dur = dur + y + " seconds "
-
-                end_string = end.strftime("%b-%d-%Y %H:%M:%S")
+                delta, dur = parsed
+                end_string = (datetime.now(tz_TX) + delta).strftime("%b-%d-%Y %H:%M:%S")
 
                 self.database.addTimerBan(str(member.id), end_string)
 
-                dur = dur[0:-1]
                 embed = discord.Embed(
                     title="Temp Ban issued!",
                     description=f"A duration of `{dur}` was specified.",
@@ -299,9 +278,13 @@ class ModerationSlash(commands.Cog):
 
                 await channel.send(content=None, embed=embed)
 
-                await member.send(
-                    f"You have ben temporarily banned from Drewski's Operators server. The ban lasts {dur}."
-                )
+                # Users with closed DMs must be banned all the same
+                try:
+                    await member.send(
+                        f"You have ben temporarily banned from Drewski's Operators server. The ban lasts {dur}."
+                    )
+                except discord.HTTPException as err:
+                    log.info("Unable to send the tempban notice to %s: %s", member.id, err)
 
                 await ctx.guild.ban(member, reason=reason, delete_message_days=0)
 
@@ -317,6 +300,9 @@ class ModerationSlash(commands.Cog):
                 )
 
                 await asyncio.sleep(int(delta.total_seconds()))
+                # A newer /tempban or check_timers can have ended this timer
+                if not self.end_timer(str(member.id), "ban", end_string):
+                    return
 
                 embed = discord.Embed(
                     title="Timed ban complete",
@@ -329,8 +315,6 @@ class ModerationSlash(commands.Cog):
                 await ctx.guild.unban(member, reason="Temp ban concluded")
 
                 log.info("Timer ended - User %s has been unbanned.", member)
-
-                self.database.delTimer(str(member.id))
 
 
     # /kick Command
@@ -508,8 +492,9 @@ class ModerationSlash(commands.Cog):
             await channel.send(content=None, embed=embed)
             await ctx.respond(embed=discord.Embed(title=f"{member} has been warned"))
             print("INFO: Done.")
-        except:
-            print("WARNING: oof, warn command broke")
+        except Exception:
+            log.exception("Warn command failed for %s", member)
+            await ctx.respond("The warning failed, see the bot logs.", ephemeral=True)
 
     # /unwarn command
     @slash_command(guild_ids=[config.GUILD], name="unwarn", default_member_permissions=MOD_PERMISSIONS)
@@ -521,14 +506,26 @@ class ModerationSlash(commands.Cog):
             discord.Member, "Member for which to remove the last warning", required=True
         ),
     ):
-        """Remove the last warn from a user's warnings list."""
+        """Remove the last warn from a user's warnings list.
+
+        warn_reasons has no column for the kind of infraction: the newest reason
+        of the user is removed, and the warnings counter goes down by one.
+        """
         if member is not None:
 
-            self.database.delWarning(str(member.id), reason="")
+            warn_user = self.database.getWarnUserByID(str(member.id))
+            if not warn_user or not warn_user['warnings']:
+                await ctx.respond(
+                    embed=discord.Embed(title=f"{member} has no warnings to remove."),
+                    ephemeral=True
+                )
+                return
+
+            self.database.delWarning(str(member.id))
 
             # Reply to command
             await ctx.respond(
-                embed=discord.Embed(title=f"{member} last warning has been removed, if present."),
+                embed=discord.Embed(title=f"{member} last warning has been removed."),
                 ephemeral=True
             )
 
@@ -583,7 +580,8 @@ class ModerationSlash(commands.Cog):
             timers = []
             for elem in t:
 
-                usr = await self.bot.fetch_user(int(elem['user_id']))
+                # A mention needs no API call
+                mention = f"<@{elem['user_id']}>"
                 ban = str(elem['ban'])
                 mute = str(elem['mute'])
                 endBan = str(elem['endBan'])
@@ -591,7 +589,7 @@ class ModerationSlash(commands.Cog):
 
 
                 timers.append(
-                    f"{usr.mention}"
+                    mention
                     + "```\nBan: "
                     + ban
                     + "\nMute: "
@@ -611,11 +609,18 @@ class ModerationSlash(commands.Cog):
                 )
             else:
 
+                # The description of an embed holds at most 4096 characters
+                lines = ["{}: {}".format(*k) for k in enumerate(timers)]
+                description = ""
+                for i, line in enumerate(lines):
+                    if len(description) + len(line) + 30 > 4096:
+                        description += f"...and {len(lines) - i} more"
+                        break
+                    description += line + "\n"
+
                 embed = discord.Embed(
                     title="Timers",
-                    description="\n".join(
-                        "{}: {}".format(*k) for k in enumerate(timers)
-                    ),
+                    description=description.rstrip("\n"),
                     colour=config.GREEN,
                 )
                 embed.set_footer(text=config.FOOTER)

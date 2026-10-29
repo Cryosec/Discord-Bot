@@ -264,31 +264,23 @@ class Database(commands.Cog):
             log.exception("Unexpected error in getWarnCount: %s", e)
             return 0
 
-    def addWarning(self, user_id: str, tag:str, reason: str):
-        """Adds a warning reason and increments the warning count for a user."""
-        # Use INSERT ... ON DUPLICATE KEY UPDATE for atomicity
-        user_update_statement = """
-            INSERT INTO warn_user (user_id, warnings, kicks, bans, tag)
-            VALUES (%s, 1, 0, 0, %s)
-            ON DUPLICATE KEY UPDATE warnings = warnings + 1, tag = VALUES(tag)
-        """
-        reason_insert_statement = "INSERT INTO warn_reasons (user_id, reason) VALUES (%s, %s)"
+    ### WARNINGS, KICKS AND BANS ###
+    # warn_user holds one counter per kind of infraction. warn_reasons holds the
+    # reasons of all three kinds and has no column for the kind.
+    INFRACTION_COUNTERS = ("warnings", "kicks", "bans")
 
+    def _transaction(self, work, context):
+        """Run work(cursor) in one transaction: commit, or roll back and re-raise."""
         conn = None
         cursor = None
         try:
             conn = self._get_connection()
             cursor = conn.cursor(dictionary=True)
-
-            # Execute both statements within a transaction
-            cursor.execute(user_update_statement, (user_id, tag))
-            cursor.execute(reason_insert_statement, (user_id, reason))
-
-            conn.commit() # Commit both changes together
-            log.debug(f"Warning added for user {user_id}")
-            return cursor.rowcount # Indicate success
+            result = work(cursor)
+            conn.commit()
+            return result
         except mariadb.Error as db_error:
-            log.exception(f"Database error adding warning for user {user_id}: {db_error}", exc_info=True)
+            log.exception("Database error %s: %s", context, db_error)
             if conn:
                 try: conn.rollback()
                 except mariadb.Error: pass
@@ -301,183 +293,77 @@ class Database(commands.Cog):
                 try: conn.close()
                 except mariadb.Error: pass
 
-    def delWarning(self, user_id: str, reason: str):
-        """Deletes a specific warning reason by its ID and decrements count."""
-        # It's much safer to delete by a unique ID than by reason text
-        reason_delete_statement = "DELETE FROM warn_reasons WHERE reason=%s AND user_id=%s"
-        user_update_statement = "UPDATE warn_user SET warnings = GREATEST(warnings - 1, 0) WHERE user_id=%s"
+    def _add_infraction(self, counter: str, user_id: str, tag: str, reason: str):
+        """Store a reason and increment one warn_user counter."""
+        if counter not in self.INFRACTION_COUNTERS:
+            raise ValueError(f"Unknown infraction counter: {counter}")
+        initial = [str(int(c == counter)) for c in self.INFRACTION_COUNTERS]
+        user_update_statement = f"""
+            INSERT INTO warn_user (user_id, warnings, kicks, bans, tag)
+            VALUES (%s, {', '.join(initial)}, %s)
+            ON DUPLICATE KEY UPDATE {counter} = {counter} + 1, tag = VALUES(tag)
+        """
+        reason_insert_statement = "INSERT INTO warn_reasons (user_id, reason) VALUES (%s, %s)"
 
-        conn = None
-        cursor = None
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor(dictionary=True)
+        def work(cursor):
+            cursor.execute(user_update_statement, (user_id, tag))
+            cursor.execute(reason_insert_statement, (user_id, reason))
+            return cursor.rowcount
 
-            # Execute both statements within a transaction
-            cursor.execute(reason_delete_statement, (reason, user_id))
-            deleted_count = cursor.rowcount # Check if the reason was actually deleted
+        return self._transaction(work, f"adding {counter} for user {user_id}")
 
+    def _del_infraction(self, counter: str, user_id: str, reason: str = None):
+        """Delete one reason and decrement one warn_user counter. Returns the rows deleted.
+
+        Deletes the newest row with that reason (the same reason can be stored
+        more than once), or the newest row of the user if reason is None. Same
+        rule as the DELETE routes of the web API.
+        """
+        if counter not in self.INFRACTION_COUNTERS:
+            raise ValueError(f"Unknown infraction counter: {counter}")
+        if reason is None:
+            reason_delete_statement = "DELETE FROM warn_reasons WHERE user_id=%s ORDER BY id DESC LIMIT 1"
+            params = (user_id,)
+        else:
+            reason_delete_statement = ("DELETE FROM warn_reasons WHERE user_id=%s AND reason=%s "
+                                       "ORDER BY id DESC LIMIT 1")
+            params = (user_id, reason)
+        user_update_statement = f"UPDATE warn_user SET {counter} = GREATEST({counter} - 1, 0) WHERE user_id=%s"
+
+        def work(cursor):
+            cursor.execute(reason_delete_statement, params)
+            deleted_count = cursor.rowcount
             if deleted_count > 0:
                 cursor.execute(user_update_statement, (user_id,))
-                conn.commit() # Commit both changes together
-                log.debug(f"Warning reason '{reason}' deleted for user {user_id}")
-                return deleted_count
             else:
-                log.warning(f"Warning reason '{reason}' not found for user {user_id}. No changes made.")
-                conn.rollback() # Rollback if reason wasn't found
-                return 0
+                log.warning(f"{counter} reason '{reason}' not found for user {user_id}. No changes made.")
+            return deleted_count
 
-        except mariadb.Error as db_error:
-            log.exception(f"Database error deleting warning reason '{reason}' for user {user_id}: {db_error}", exc_info=True)
-            if conn:
-                try: conn.rollback()
-                except mariadb.Error: pass
-            raise
-        finally:
-            if cursor:
-                try: cursor.close()
-                except mariadb.Error: pass
-            if conn:
-                try: conn.close()
-                except mariadb.Error: pass
+        return self._transaction(work, f"deleting {counter} reason '{reason}' for user {user_id}")
 
-    ### KICKS DATABASE ###
-    # Assuming kicks/bans also just add a reason and update the counter atomically
-    def addKick(self, user_id: str, tag:str, reason: str):
+    def addWarning(self, user_id: str, tag: str, reason: str):
+        """Adds a warning reason and increments the warning count for a user."""
+        return self._add_infraction("warnings", user_id, tag, reason)
+
+    def delWarning(self, user_id: str, reason: str = None):
+        """Deletes one warning reason (the newest one if reason is None) and decrements the count."""
+        return self._del_infraction("warnings", user_id, reason)
+
+    def addKick(self, user_id: str, tag: str, reason: str):
         """Adds a kick reason and increments the kick count for a user."""
-        user_update_statement = """
-            INSERT INTO warn_user (user_id, warnings, kicks, bans, tag)
-            VALUES (%s, 0, 1, 0, %s)
-            ON DUPLICATE KEY UPDATE kicks = kicks + 1, tag = VALUES(tag)
-        """
-        reason_insert_statement = "INSERT INTO warn_reasons (user_id, reason) VALUES (%s, %s)"
-        conn = None
-        cursor = None
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute(user_update_statement, (user_id, tag))
-            cursor.execute(reason_insert_statement, (user_id, reason))
-            conn.commit()
-            log.debug(f"Kick added for user {user_id}")
-            return cursor.rowcount
-        except mariadb.Error as db_error:
-            log.exception(f"Database error adding kick for user {user_id}: {db_error}", exc_info=True)
-            if conn:
-                try: conn.rollback()
-                except: pass
-            raise
-        finally:
-            if cursor:
-                try: cursor.close()
-                except: pass
-            if conn:
-                try: conn.close()
-                except: pass
-
+        return self._add_infraction("kicks", user_id, tag, reason)
 
     def delKick(self, user_id: str, reason: str):
-        """Deletes a specific kick reason by its ID and decrements count."""
-        reason_delete_statement = "DELETE FROM warn_reasons WHERE reason=%s AND user_id=%s"
-        user_update_statement = "UPDATE warn_user SET kicks = GREATEST(kicks - 1, 0) WHERE user_id=%s"
+        """Deletes one kick reason and decrements the kick count."""
+        return self._del_infraction("kicks", user_id, reason)
 
-        conn = None
-        cursor = None
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute(reason_delete_statement, (reason, user_id))
-            deleted_count = cursor.rowcount
-            if deleted_count > 0:
-                cursor.execute(user_update_statement, (user_id,))
-                conn.commit()
-                log.debug(f"Kick reason '{reason}' deleted for user {user_id}")
-                return deleted_count
-            else:
-                log.warning(f"Kick reason '{reason}' not found for user {user_id}.")
-                conn.rollback()
-                return 0
-        except mariadb.Error as db_error:
-            log.exception(f"Database error deleting kick reason '{reason}' for user {user_id}: {db_error}", exc_info=True)
-            if conn:
-                try: conn.rollback()
-                except: pass
-            raise
-        finally:
-            if cursor:
-                try: cursor.close()
-                except: pass
-            if conn:
-                try: conn.close()
-                except: pass
-
-    ### BANS DATABASE ###
-    def addBan(self, user_id: str, tag:str, reason: str):
+    def addBan(self, user_id: str, tag: str, reason: str):
         """Adds a ban reason and increments the ban count for a user."""
-        user_update_statement = """
-            INSERT INTO warn_user (user_id, warnings, kicks, bans, tag)
-            VALUES (%s, 0, 0, 1, %s)
-            ON DUPLICATE KEY UPDATE bans = bans + 1, tag = VALUES(tag)
-        """
-        reason_insert_statement = "INSERT INTO warn_reasons (user_id, reason) VALUES (%s, %s)"
-
-        conn = None
-        cursor = None
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute(user_update_statement, (user_id, tag))
-            cursor.execute(reason_insert_statement, (user_id, reason))
-            conn.commit()
-            log.debug(f"Ban added for user {user_id}")
-            return cursor.rowcount
-        except mariadb.Error as db_error:
-            log.exception(f"Database error adding ban for user {user_id}: {db_error}", exc_info=True)
-            if conn:
-                try: conn.rollback()
-                except: pass
-            raise
-        finally:
-            if cursor:
-                try: cursor.close()
-                except: pass
-            if conn:
-                try: conn.close()
-                except: pass
+        return self._add_infraction("bans", user_id, tag, reason)
 
     def delBan(self, user_id: str, reason: str):
-        """Deletes a specific ban reason by its ID and decrements count."""
-        reason_delete_statement = "DELETE FROM warn_reasons WHERE id=%s AND user_id=%s"
-        user_update_statement = "UPDATE warn_user SET bans = GREATEST(bans - 1, 0) WHERE user_id=%s"
-        conn = None
-        cursor = None
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute(reason_delete_statement, (reason, user_id))
-            deleted_count = cursor.rowcount
-            if deleted_count > 0:
-                cursor.execute(user_update_statement, (user_id,))
-                conn.commit()
-                log.debug(f"Ban reason '{reason}' deleted for user {user_id}")
-                return deleted_count
-            else:
-                log.warning(f"Ban reason '{reason}' not found for user {user_id}.")
-                conn.rollback()
-                return 0
-        except mariadb.Error as db_error:
-            log.exception(f"Database error deleting ban reason '{reason}' for user {user_id}: {db_error}", exc_info=True)
-            if conn:
-                try: conn.rollback()
-                except: pass
-            raise
-        finally:
-            if cursor:
-                try: cursor.close()
-                except: pass
-            if conn:
-                try: conn.close()
-                except: pass
+        """Deletes one ban reason (the text stored by addBan) and decrements the ban count."""
+        return self._del_infraction("bans", user_id, reason)
 
 
 ### NEW USER TRACKING ###

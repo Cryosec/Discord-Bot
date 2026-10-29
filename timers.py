@@ -16,16 +16,24 @@ JAC_DAYS = 14
 
 
 async def check_jac_timers(database, now):
-    """Remove the JAC entries older than 14 days."""
+    """Remove the JAC entries older than 14 days. A bad row does not stop the others."""
     for elem in database.getJac():
-        entry_time = datetime.strptime(elem['date'], TIME_FORMAT)
+        try:
+            entry_time = datetime.strptime(elem['date'], TIME_FORMAT)
+        except (TypeError, ValueError):
+            log.error("JAC entry of %s has an invalid date %r, not pruned", elem.get('user_id'), elem.get('date'))
+            continue
         if entry_time + timedelta(days=JAC_DAYS) < now:
             print(f"Removing entry for {elem['user_id']}")
             database.delJac(elem['user_id'])
 
 
 async def check_mute_timers(now, time_db, guild, channel) -> bool:
-    """Remove the mute role when a timed mute ends. True if the mute ended."""
+    """Remove the mute role when a timed mute ends. True if the mute ended.
+
+    Only a user who left ends the timer without the role removal. Other errors
+    propagate: check_all keeps the timer and the next hourly check tries again.
+    """
     mem = time_db['user_id']
     mute_time = datetime.strptime(time_db['endMute'], TIME_FORMAT)
 
@@ -35,56 +43,58 @@ async def check_mute_timers(now, time_db, guild, channel) -> bool:
 
         try:
             member = await guild.fetch_member(int(mem))
-            role = guild.get_role(config.MUTE_ID)
-            # Create embed to log unmuting
-            embed = discord.Embed(
-                title="Timed mute complete",
-                description=f"User {member} has been unmuted automatically.",
-                colour=config.YELLOW,
-            )
-            embed.set_footer(text=config.FOOTER)
+        except discord.NotFound:
+            log.info("User %s left the server, removing mute timer from db...", mem)
+            return True
 
-            await channel.send(content=None, embed=embed)
-            await member.remove_roles(role)
+        await member.remove_roles(guild.get_role(config.MUTE_ID))
 
-        except:
-            log.exception("\nError in fetching user, removing mute timer from db...")
+        # Create embed to log unmuting
+        embed = discord.Embed(
+            title="Timed mute complete",
+            description=f"User {member} has been unmuted automatically.",
+            colour=config.YELLOW,
+        )
+        embed.set_footer(text=config.FOOTER)
+
+        await channel.send(content=None, embed=embed)
         return True
     return False
 
 
-async def check_ban_timers(bot, now, time_db, guild, channel) -> bool:
+async def check_ban_timers(now, time_db, guild, channel) -> bool:
     """Unban the user when a timed ban ends. True if the ban ended.
 
     A ban that is still running waits for a later hourly check: the unban can be
-    up to 60 minutes late, but the loop does not stop.
+    up to 60 minutes late, but the loop does not stop. The unban goes by ID, so
+    it works also for a deleted account. Errors other than "not banned"
+    propagate: check_all keeps the timer and the next hourly check tries again.
     """
     mem = time_db['user_id']
     ban_time = datetime.strptime(time_db['endBan'], TIME_FORMAT)
 
     # If timer ran out, unban user
     if ban_time < now:
+        try:
+            await guild.unban(discord.Object(id=int(mem)), reason="Temp ban concluded")
+        except discord.NotFound:
+            log.info("User %s is not banned anymore, removing ban timer from db...", mem)
+            return True
 
-        user = await bot.fetch_user(int(mem))
         # Create embed to log unbanning
         embed = discord.Embed(
             title="Timed ban complete",
-            description=f"User {user.name}#{user.discriminator} has been unbanned automatically.",
+            description=f"User <@{mem}> ({mem}) has been unbanned automatically.",
             colour=config.YELLOW,
         )
         embed.set_footer(text=config.FOOTER)
 
         await channel.send(content=None, embed=embed)
-
-        try:
-            await guild.unban(user)
-        except:
-            log.exception("Error while executing timed unban")
         return True
     return False
 
 
-async def check_all(bot, database, guild, channel, now):
+async def check_all(database, guild, channel, now):
     """Run every check. An error on one timer does not stop the others."""
     try:
         await check_jac_timers(database, now)
@@ -96,7 +106,7 @@ async def check_all(bot, database, guild, channel, now):
             user_id = str(elem['user_id'])
             print(f"{user_id} - Ban: {elem['ban']}, Mute: {elem['mute']}")
             mute_ended = bool(elem['mute']) and await check_mute_timers(now, elem, guild, channel)
-            ban_ended = bool(elem['ban']) and await check_ban_timers(bot, now, elem, guild, channel)
+            ban_ended = bool(elem['ban']) and await check_ban_timers(now, elem, guild, channel)
             mute_left = bool(elem['mute']) and not mute_ended
             ban_left = bool(elem['ban']) and not ban_ended
 

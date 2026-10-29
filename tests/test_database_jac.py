@@ -3,38 +3,16 @@
 The guild_id column comes from migrations/2026-10-29_jac_guild_id.sql. The bot
 must keep working if it is deployed before the migration runs.
 """
-import importlib.util
-import sys
-import types
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-DB_FILE = Path(__file__).resolve().parents[1] / "cogs" / "database.py"
-
-
-class FakeDbError(Exception):
-    def __init__(self, msg="", errno=None):
-        super().__init__(msg)
-        self.errno = errno
+from conftest import FakeDbError
 
 
 @pytest.fixture
-def database(monkeypatch):
-    fake = types.ModuleType("mariadb")
-    fake.Error = FakeDbError
-    fake.connect = MagicMock()
-    monkeypatch.setitem(sys.modules, "mariadb", fake)
-    # No real .env: the fixture sets the DB_* variables
-    monkeypatch.setitem(sys.modules, "dotenv", types.SimpleNamespace(load_dotenv=lambda: None))
-    for key, value in {"DB_USERNAME": "u", "DB_PASSWORD": "p", "DB_HOST": "h",
-                       "DB_PORT": "3306", "DB_NAME": "n"}.items():
-        monkeypatch.setenv(key, value)
-    spec = importlib.util.spec_from_file_location("real_cogs_database", DB_FILE)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    db = module.Database(MagicMock())
+def database(real_db_module):
+    db = real_db_module.Database(MagicMock())
     db._execute_query = MagicMock(return_value=1)
     return db
 

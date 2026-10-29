@@ -62,19 +62,17 @@ class Events(commands.Cog):
 
         ban_entry = await guild.fetch_ban(user)
 
-        # Add ban log to DB
-        if ban_entry.reason is None:
-            self.database.addBan(str(user.id), str(user), "Ban: No reason Specified")
-        else:
-            self.database.addBan(str(user.id), str(user), ban_entry.reason)
+        # Add ban log to DB. delBan below needs the same reason text.
+        reason = ban_entry.reason or "Ban: No reason Specified"
+        self.database.addBan(str(user.id), str(user), reason)
 
         author = None
 
-        # Read audit logs
-        # For whatever reason it does not assign the author of the ban and logs "None"
-        async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
+        # Read audit logs: the newest ban entry can be about another user
+        async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.ban):
             if entry.target.id == user.id:
                 author = entry.user
+                break
 
         # Add 'unban' button under each ban embed
         unban_button = support.Unban()
@@ -85,7 +83,7 @@ class Events(commands.Cog):
             description=f"User {user.name}#{user.discriminator} was banned from the Server by {author}.",
             colour=config.RED,
         )
-        embed.set_author(name=self.bot.user.name, icon_url=self.bot.user.avatar.url)
+        embed.set_author(name=self.bot.user.name, icon_url=self.bot.user.display_avatar.url)
         embed.add_field(name="Reason", value=ban_entry.reason, inline=False)
         embed.add_field(name="Timestamp", value=dt)
 
@@ -102,7 +100,7 @@ class Events(commands.Cog):
             await guild.unban(user)
 
             # Remove ban from db
-            self.database.delBan(str(user.id), ban_entry.reason)
+            self.database.delBan(str(user.id), reason)
 
             # Edit ban log embed to reflect
             new_embed = discord.Embed(
@@ -111,7 +109,7 @@ class Events(commands.Cog):
                 colour=config.GREEN,
             )
             new_embed.set_author(
-                name=self.bot.user.name, icon_url=self.bot.user.avatar.url
+                name=self.bot.user.name, icon_url=self.bot.user.display_avatar.url
             )
             new_embed.add_field(name="Ban reason", value=ban_entry.reason, inline=False)
             new_embed.add_field(name="Timestamp", value=now.strftime(TIME_FORMAT))
@@ -157,6 +155,7 @@ class Events(commands.Cog):
         guild = self.bot.get_guild(payload.guild_id)
         member = await self._get_user(payload.target_id)
         author = await self._get_user(payload.user_id)
+        reason = payload.reason or "Kick: No reason specified"
 
         embed = discord.Embed(
             title="User Kick",
@@ -164,16 +163,16 @@ class Events(commands.Cog):
             colour=config.RED,
         )
         embed.set_author(
-            name=self.bot.user.name, icon_url=self.bot.user.avatar.url
+            name=self.bot.user.name, icon_url=self.bot.user.display_avatar.url
         )
-        embed.add_field(name="Reason", value=payload.reason)
+        embed.add_field(name="Reason", value=reason)
         embed.add_field(name="Timestamp", value=dt)
 
         channel = guild.get_channel(config.LOG_CHAN)
 
         await channel.send(content=None, embed=embed)
 
-        self.database.addKick(str(member.id), str(member.name), payload.reason)
+        self.database.addKick(str(member.id), str(member.name), reason)
 
     async def log_timeout(self, payload, author=None, reason=None):
         """Log a timeout, with a button to undo it."""
@@ -217,7 +216,7 @@ class Events(commands.Cog):
             colour = config.YELLOW,
         )
         embed.set_author(
-            name = self.bot.user.name, icon_url = self.bot.user.avatar.url
+            name = self.bot.user.name, icon_url = self.bot.user.display_avatar.url
         )
         embed.add_field(name="Timestamp", value = dt)
 
@@ -278,6 +277,10 @@ async def check_jac(self, message):
     the check is per author only.
     """
     if int(message.channel.id) == config.CLAN_CHAN:
+        # A webhook author is a User without roles
+        if message.webhook_id is not None:
+            return
+
         role = message.guild.get_role(config.MOD_ID)
         botrole = message.guild.get_role(config.BOT_ID)
 
@@ -289,10 +292,7 @@ async def check_jac(self, message):
             return
         # Save entries in JAC db, check if existence
 
-        jac = self.database.getJac()
-        #warn_users = self.database.getWarnUsers()
-
-        if str(message.author.id) in map(lambda x: x['user_id'], jac):
+        if self.database.getJacByID(str(message.author.id)):
 
             # DB logging happens within function
             await issue_warn(
@@ -327,9 +327,7 @@ async def issue_warn(self, message, warning):
     # if the author is in the warnings database,
     # increase the relative warnings counter
 
-    warn_user = self.database.getWarnUsers()
-
-    if str(message.author.id) in map(lambda x: x['user_id'], warn_user):
+    if self.database.getWarnUserByID(str(message.author.id)) is not None:
 
         self.database.addWarning(str(message.author.id), str(message.author.name), reason)
 

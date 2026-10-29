@@ -3,8 +3,9 @@ import os
 import sys
 import logging
 from logging.handlers import RotatingFileHandler
-from urllib.parse import unquote, urlencode
+from urllib.parse import urlencode
 from functools import wraps
+from datetime import datetime
 import uuid
 
 # Flask and Extensions
@@ -53,7 +54,7 @@ DISCORD_BOT_TOKEN = os.getenv('DISCORD_TOKEN') # Bot token needed for role check
 DISCORD_GUILD_ID = os.getenv('DISCORD_GUILD_ID')
 DISCORD_MOD_IDS_RAW = os.getenv('DISCORD_MOD_ID', '') # Expecting comma-separated string or single ID
 FRONTEND_BASE_URL = os.getenv('FRONTEND_BASE_URL', '/') # URL to redirect back to after login
-FLASK_BASE_URL = os.getenv('FLASK_BASE_URL') # Base URL of this Flask app
+FLASK_BASE_URL = os.getenv('FLASK_BASE_URL', '') # Base URL of this Flask app
 
 # Explicitly set the preferred scheme if needed (good practice with ProxyFix)
 if FLASK_BASE_URL.startswith('https'):
@@ -130,11 +131,12 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 Session(app)
 
 # --- Database Connection Handling (Keep Existing) ---
-DB_USER = str(os.getenv("DB_USERNAME"))
-DB_PASS = str(os.getenv("DB_PASSWORD"))
-DB_HOST = str(os.getenv("DB_HOST"))
+# No str(): str(None) is 'None', which would pass the check below
+DB_USER = os.getenv("DB_USERNAME")
+DB_PASS = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
 DB_PORT_STR = os.getenv("DB_PORT")
-DB_NAME = str(os.getenv("DB_NAME"))
+DB_NAME = os.getenv("DB_NAME")
 
 # Validate essential environment variables
 if not all([DB_USER, DB_PASS, DB_HOST, DB_PORT_STR, DB_NAME]):
@@ -210,21 +212,21 @@ def teardown_db(exception=None):
     """Ensures DB connection is closed after each request."""
     close_db_connection(exception)
 
-# --- Helper Function for Commits/Rollbacks ---
-def handle_db_transaction(conn, cur, success_message, failure_message_prefix, log_context):
-    """Commits or rolls back transaction and returns appropriate response."""
+# --- Date format shared with the bot ---
+# The bot parses jac.date, timers.endMute and timers.endBan with this format
+# (US/Central wall-clock time), in timers.py and cogs/jac.py. Another format
+# breaks its hourly checks.
+BOT_TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
+
+def is_bot_date(value):
+    """True if the bot can parse the date string."""
     try:
-        conn.commit()
-        log.debug(f"{log_context}: Transaction committed successfully.")
-        return jsonify({"message": success_message}), 200 # Or 201 for creations
-    except mariadb.Error as db_error:
-        log.exception(f"{log_context}: Error during commit: %s", db_error)
-        try:
-            conn.rollback()
-            log.warning(f"{log_context}: Transaction rolled back due to commit error.")
-        except mariadb.Error as rb_error:
-            log.error(f"{log_context}: Error during rollback after commit failure: %s", rb_error)
-        return jsonify({"error": f"{failure_message_prefix}: Commit failed", "details": str(db_error)}), 500 # Avoid details in prod
+        datetime.strptime(value, BOT_TIME_FORMAT)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+BAD_DATE_ERROR = 'Invalid date: expected the bot format "%b-%d-%Y %H:%M:%S" (US/Central), e.g. "Oct-29-2026 14:30:00"'
 
 def handle_db_error(conn, error, failure_message_prefix, log_context, status_code=500):
     """Logs error, rolls back transaction, and returns error response."""
@@ -525,7 +527,8 @@ def add_jac_entry():
 
     if not user_id or not link or not date_str:
         return jsonify({"error": "Missing required fields: user_id, link, date"}), 400
-    # TODO: Add input validation for link format, date format etc.
+    if not is_bot_date(date_str): return jsonify({"error": BAD_DATE_ERROR}), 400
+    # TODO: Add input validation for link format
 
     try:
         statement = "INSERT INTO jac (user_id, link, date) VALUES (%s, %s, %s)"
@@ -605,7 +608,7 @@ def add_mute_timer():
     user_id = data.get('user_id')
     endMute = data.get('endMute')
     if not user_id or not endMute: return jsonify({"error": "Missing required fields: user_id, endMute"}), 400
-    # TODO: Validate endMute format
+    if not is_bot_date(endMute): return jsonify({"error": BAD_DATE_ERROR}), 400
     try:
         statement = """
             INSERT INTO timers (user_id, ban, mute, endBan, endMute) VALUES (%s, false, true, NULL, %s)
@@ -632,7 +635,7 @@ def add_ban_timer():
     user_id = data.get('user_id')
     endBan = data.get('endBan')
     if not user_id or not endBan: return jsonify({"error": "Missing required fields: user_id, endBan"}), 400
-    # TODO: Validate endBan format
+    if not is_bot_date(endBan): return jsonify({"error": BAD_DATE_ERROR}), 400
     try:
         statement = """
             INSERT INTO timers (user_id, ban, mute, endBan, endMute) VALUES (%s, true, false, %s, NULL)
@@ -772,7 +775,7 @@ def delete_warning(user_id, reason):
     conn, cur = get_db_connection()
     if not conn or not cur: return jsonify({"error": "Database connection failed"}), 500
 
-    decoded_reason = unquote(reason) # Decode URL-encoded reason
+    decoded_reason = reason # Flask already decoded the path: a second unquote breaks reasons with '%'
 
     try:
         # Check how many instances of this reason exist for the user
@@ -869,7 +872,7 @@ def delete_kick(user_id, reason):
     conn, cur = get_db_connection()
     if not conn or not cur: return jsonify({"error": "Database connection failed"}), 500
 
-    decoded_reason = unquote(reason)
+    decoded_reason = reason # Flask already decoded the path
 
     try:
        # Check if the reason exists
@@ -960,7 +963,7 @@ def delete_ban(user_id, reason):
     conn, cur = get_db_connection()
     if not conn or not cur: return jsonify({"error": "Database connection failed"}), 500
 
-    decoded_reason = unquote(reason)
+    decoded_reason = reason # Flask already decoded the path
 
     try:
         # Check if the reason exists

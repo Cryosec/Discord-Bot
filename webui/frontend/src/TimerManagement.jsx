@@ -3,6 +3,7 @@
 // ========================================================================
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ConfirmationModal from './ConfirmationModal';
+import { toBotDate } from './botDate';
 import Pagination from './Pagination';
 import { useAuth } from './AuthContext';
 
@@ -91,12 +92,8 @@ function TimerManagement() {
   };
   // --- End Pagination Logic ---
 
-  // Calculate end date based on duration input for the add form.
-  // The bot stores and compares timer end times as US/Central wall-clock strings
-  // in the format "%b-%d-%Y %H:%M:%S" (e.g. "Aug-12-2026 14:30:00") and parses
-  // them with datetime.strptime in check_timers. We MUST emit that exact format
-  // and timezone; anything else (e.g. an ISO/UTC string) raises ValueError in
-  // check_timers, which aborts the whole expiry loop so no timers ever expire.
+  // Calculate end date based on duration input for the add form, in the
+  // bot's date format (see botDate.js).
   const calculateEndDate = () => {
     const target = new Date();
     const value = parseInt(durationValue, 10);
@@ -116,24 +113,7 @@ function TimerManagement() {
         return null; // Should not happen with select dropdown
     }
 
-    // Render the target instant as US/Central wall-clock time, then assemble the
-    // bot's "%b-%d-%Y %H:%M:%S" format. en-US "short" month matches Python's %b
-    // (Jan, Feb, ... Dec); h23 guarantees a 00-23 hour.
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Chicago',
-      month: 'short',
-      day: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(target).reduce((acc, part) => {
-      acc[part.type] = part.value;
-      return acc;
-    }, {});
-
-    return `${parts.month}-${parts.day}-${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
+    return toBotDate(target);
   };
 
   // Handler for submitting the add timer form

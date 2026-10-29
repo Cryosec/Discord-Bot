@@ -387,3 +387,14 @@ def test_duplicate_code_is_refused_without_an_api_call(env):
     env.submit()
     _rejected(env, "already")
     env.bot.fetch_invite.assert_not_awaited()
+
+
+def test_jac_info_time_left_uses_the_central_offset(env):
+    """replace(tzinfo=pytz zone) gives the LMT offset (-5:51): 'Time left' was ~51 minutes off."""
+    now = datetime.now(jac.tz_TX).strftime(jac.TIME_FORMAT)
+    env.cog.database.getJacByID.return_value = [{"user_id": "5", "link": "x", "date": now}]
+    ctx = MagicMock()
+    ctx.respond = AsyncMock()
+    asyncio.run(env.cog.jac_info.callback(env.cog, ctx, MagicMock(id=5)))
+    fields = {f.name: f.value for f in ctx.respond.await_args.kwargs["embed"].fields}
+    assert fields["Time left"].startswith("13 days, 23:59")

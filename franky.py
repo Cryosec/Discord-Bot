@@ -53,6 +53,9 @@ bot = commands.Bot(
 
 database = db.Database(bot)
 
+# on_ready fires again after a new gateway session: start cogwatch only once
+watcher = None
+
 # Here starts the logic
 if __name__ == "__main__":
     """Load the extensions from the list and launch a warning on failure."""
@@ -66,44 +69,53 @@ if __name__ == "__main__":
 
 @tasks.loop(minutes=60)
 async def check_timers():
-    """Task that runs every 60 minutes, checking all active timers for any that finished."""
-    # Setup variables
-    guild = await bot.fetch_guild(config.GUILD)
-    channel = bot.get_channel(config.LOG_CHAN)
+    """Task that runs every 60 minutes, checking all active timers for any that finished.
 
-    # Setup current time
-    tz_TX = pytz.timezone("US/central")
-    now_string = datetime.now(tz_TX).strftime("%b-%d-%Y %H:%M:%S")
-    now = datetime.strptime(now_string, "%b-%d-%Y %H:%M:%S")
-
-    # Run through the timers
-    # JAC refers to channel join-a-clan, where clan ads are posted
+    tasks.loop stops for good on an exception it does not retry (for example a
+    discord.HTTPException), so every error is caught here.
+    """
     try:
-        await timers.check_all(bot, database, guild, channel, now)
-    except:
+        # Setup variables
+        guild = await bot.fetch_guild(config.GUILD)
+        channel = bot.get_channel(config.LOG_CHAN)
+
+        # Setup current time
+        tz_TX = pytz.timezone("US/central")
+        now_string = datetime.now(tz_TX).strftime("%b-%d-%Y %H:%M:%S")
+        now = datetime.strptime(now_string, "%b-%d-%Y %H:%M:%S")
+
+        # Run through the timers
+        # JAC refers to channel join-a-clan, where clan ads are posted
+        await timers.check_all(database, guild, channel, now)
+    except Exception:
         log.exception("Error while checking timers, waiting next loop...")
 
 @tasks.loop(minutes=15)
 async def war_channel():
+    """Repost config.WAR_MSG when it is not in the last 25 messages of the war channel."""
+    # An uncaught exception would stop the loop for good (see check_timers)
+    try:
+        channel = bot.get_channel(config.WAR_CHAN)
 
-    #guild = await bot.fetch_guild(config.GUILD)
-    channel = bot.get_channel(config.WAR_CHAN)
+        messages = await channel.history(limit=25).flatten()
 
-    messages = await channel.history(limit=25).flatten()
+        for msg in messages:
+            if msg.author == bot.user:
+                return
 
-    for msg in messages:
-        if msg.author == bot.user:
-            return
-
-    await channel.send(config.WAR_MSG)
+        await channel.send(config.WAR_MSG)
+    except Exception:
+        log.exception("Error in the war channel task, waiting next loop...")
 
 @bot.event
 async def on_ready():
     """Function called when bot is ready to operate, starts cogwatcher and tasks."""
+    global watcher
 
-    # Start cogwatch
-    watcher = Watcher(bot, path='cogs')
-    await watcher.start()
+    # Start cogwatch: one watcher, else one save reloads the cog once per watcher
+    if watcher is None:
+        watcher = Watcher(bot, path='cogs')
+        await watcher.start()
 
     # Register view for persistence
     bot.add_view(support.Survivor())

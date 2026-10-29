@@ -154,8 +154,8 @@ class Jac(commands.Cog):
 
         if len(jac) > 0:
             now = datetime.now(tz_TX)
-            dt = datetime.strptime(jac[0]['date'], TIME_FORMAT)
-            dt = dt.replace(tzinfo=tz_TX)
+            # localize, not replace(tzinfo=...): a pytz zone in replace() has the LMT offset
+            dt = tz_TX.localize(datetime.strptime(jac[0]['date'], TIME_FORMAT))
 
             end = dt + timedelta(days=JAC_DAYS)
 

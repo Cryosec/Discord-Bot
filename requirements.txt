@@ -2,7 +2,6 @@ requests
 redis
 python-dotenv
 pytz
-asyncio
 cogwatch
 sqlalchemy
 mariadb

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ConfirmationModal from './ConfirmationModal';
+import { toBotDate } from './botDate';
 import Pagination from './Pagination'; // Import the Pagination component
 import { useAuth } from './AuthContext';
 
@@ -120,7 +121,8 @@ function JacManagement() {
     if (!newUserId || !newLink) { setError("User ID and Link are required."); return; }
     setError(null);
     setIsLoading(true); // Indicate loading state during API call
-    const currentDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    // The bot parses jac.date in its own format: an ISO date blocks the user for good
+    const currentDate = toBotDate(new Date());
 
     try {
       const response = await fetch(`${API_BASE_URL}/jac`, {

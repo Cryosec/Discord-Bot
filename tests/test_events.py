@@ -134,6 +134,7 @@ def _message(author_id=5, channel_id=None):
     message.author = _user(author_id, "poster")
     message.author.bot = False
     message.author.roles = []
+    message.webhook_id = None
     message.content = ""  # no MESSAGE_CONTENT intent
     message.channel.id = channel_id if channel_id is not None else events.config.CLAN_CHAN
     message.channel.send = AsyncMock()
@@ -146,7 +147,7 @@ def _message(author_id=5, channel_id=None):
 
 def test_jac_first_post_is_recorded_without_content():
     cog, _, _, _ = _cog()
-    cog.database.getJac.return_value = []
+    cog.database.getJacByID.return_value = []
     message = _message()
     asyncio.run(events.check_jac(cog, message))
     args = cog.database.addJac.call_args.args
@@ -156,8 +157,8 @@ def test_jac_first_post_is_recorded_without_content():
 
 def test_jac_second_post_is_removed_and_warned():
     cog, _, _, _ = _cog()
-    cog.database.getJac.return_value = [{"user_id": "5", "link": "x", "date": "d"}]
-    cog.database.getWarnUsers.return_value = []
+    cog.database.getJacByID.return_value = [{"user_id": "5", "link": "x", "date": "d"}]
+    cog.database.getWarnUserByID.return_value = None
     message = _message()
     asyncio.run(events.check_jac(cog, message))
     message.delete.assert_awaited_once()
@@ -167,8 +168,8 @@ def test_jac_second_post_is_removed_and_warned():
 
 def test_jac_kick_is_stored_once_by_the_audit_log_handler():
     cog, _, _, _ = _cog()
-    cog.database.getJac.return_value = [{"user_id": "5", "link": "x", "date": "d"}]
-    cog.database.getWarnUsers.return_value = [{"user_id": "5"}]
+    cog.database.getJacByID.return_value = [{"user_id": "5", "link": "x", "date": "d"}]
+    cog.database.getWarnUserByID.return_value = {"user_id": "5", "warnings": 1}
     cog.database.getWarnCount.return_value = 2
     message = _message()
     message.author.send = AsyncMock()
@@ -182,3 +183,80 @@ def test_on_message_has_no_content_filters_left():
     for name in ("check_invites", "check_scam", "check_spam_v2", "check_blacklist",
                  "check_msg_link", "check_new_member_links", "scam_check_embed"):
         assert not hasattr(events, name), name
+
+
+def test_jac_check_reads_only_the_author_rows():
+    cog, _, _, _ = _cog()
+    cog.database.getJacByID.return_value = []
+    asyncio.run(events.check_jac(cog, _message()))
+    cog.database.getJacByID.assert_called_once_with("5")
+    cog.database.getJac.assert_not_called()
+
+
+def test_jac_webhook_message_is_ignored():
+    """A webhook author is a User without roles."""
+    cog, _, _, _ = _cog()
+    message = _message()
+    message.webhook_id = 123
+    del message.author.roles
+    asyncio.run(events.check_jac(cog, message))
+    cog.database.getJacByID.assert_not_called()
+
+
+def test_kick_without_reason_stores_a_default_reason():
+    cog, channel, _, _ = _cog()
+    asyncio.run(cog.on_raw_audit_log_entry(_payload(discord.AuditLogAction.kick, reason=None)))
+    cog.database.addKick.assert_called_once_with("1", "target", "Kick: No reason specified")
+    fields = {f.name: f.value for f in channel.send.await_args.kwargs["embed"].fields}
+    assert fields["Reason"] == "Kick: No reason specified"
+
+
+def test_logs_work_with_the_default_bot_avatar():
+    """bot.user.avatar is None without a custom avatar: use display_avatar."""
+    cog, channel, _, _ = _cog()
+    cog.bot.user.avatar = None
+    cog.bot.user.display_avatar.url = "https://cdn.discordapp.com/embed/avatars/0.png"
+    asyncio.run(cog.on_raw_audit_log_entry(_payload(discord.AuditLogAction.kick)))
+    changes = [{"key": "communication_disabled_until", "old_value": TS, "new_value": None}]
+    asyncio.run(cog.on_raw_audit_log_entry(
+        _payload(discord.AuditLogAction.member_update, changes)))
+    for call in channel.send.await_args_list:
+        assert call.kwargs["embed"].author.icon_url == cog.bot.user.display_avatar.url
+
+
+def _audit_entries(*entries):
+    async def gen(limit=100, **kwargs):
+        for entry in entries[:limit]:
+            yield entry
+    return gen
+
+
+def _ban_setup(monkeypatch, reason, entries):
+    cog, channel, guild, _ = _cog()
+    target = _user(1, "target")
+    guild.fetch_ban = AsyncMock(return_value=MagicMock(reason=reason))
+    guild.audit_logs = _audit_entries(*entries)
+    guild.unban = AsyncMock()
+    view = MagicMock()
+    view.wait = AsyncMock()
+    view.value = True
+    view.inter.edit_original_message = AsyncMock()
+    monkeypatch.setattr(events.support, "Unban", lambda: view)
+    asyncio.run(cog.on_member_ban(guild, target))
+    return cog, channel
+
+
+def test_unban_button_removes_the_stored_ban_reason(monkeypatch):
+    """delBan must get the text that addBan stored, also without a ban reason."""
+    cog, _ = _ban_setup(monkeypatch, None, [])
+    stored = cog.database.addBan.call_args.args[2]
+    assert stored == "Ban: No reason Specified"
+    cog.database.delBan.assert_called_once_with("1", stored)
+
+
+def test_ban_author_is_found_among_recent_entries(monkeypatch):
+    """Another ban can be the newest audit log entry."""
+    other = MagicMock(target=MagicMock(id=9), user="someone else")
+    ours = MagicMock(target=MagicMock(id=1), user="mod")
+    _, channel = _ban_setup(monkeypatch, "spam", [other, ours])
+    assert channel.send.await_args.kwargs["embed"].description.endswith("by mod.")

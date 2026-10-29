@@ -141,7 +141,7 @@ def timeout_embed(
         description=f"User {user.name}#{user.discriminator} has been timed out by {author}.",
         colour=config.YELLOW,
     )
-    embed.set_author(name=bot.user.name, icon_url=bot.user.avatar.url)
+    embed.set_author(name=bot.user.name, icon_url=bot.user.display_avatar.url)
     embed.add_field(name="Reason", value=reason)
     embed.add_field(name="Timestamp", value=dt)
 

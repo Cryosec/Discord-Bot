@@ -60,3 +60,13 @@ def test_regular_message_is_not_join():
 
 def test_bot_join_is_ignored():
     assert support.is_member_join(_Msg(discord.MessageType.new_member, bot=True)) is False
+
+
+def test_timeout_embed_with_the_default_bot_avatar():
+    """bot.user.avatar is None without a custom avatar: use display_avatar."""
+    from unittest.mock import MagicMock
+    bot = MagicMock()
+    bot.user.avatar = None
+    bot.user.display_avatar.url = "https://cdn.discordapp.com/embed/avatars/0.png"
+    embed = support.timeout_embed(bot, MagicMock(), "AutoMod", "spam")
+    assert embed.author.icon_url == bot.user.display_avatar.url

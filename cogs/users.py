@@ -29,7 +29,7 @@ class Users(commands.Cog):
             embed = discord.Embed(
                 title="Roles information", description=answer, colour=config.BLUE
             )
-            embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+            embed.set_author(icon_url=self.bot.user.display_avatar.url, name=self.bot.user.name)
             embed.set_footer(text=config.FOOTER)
             await ctx.reply(content=None, embed=embed)
 
@@ -54,7 +54,7 @@ class Users(commands.Cog):
                 description=answer,
                 colour=config.PURPLE,
             )
-            embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+            embed.set_author(icon_url=self.bot.user.display_avatar.url, name=self.bot.user.name)
             embed.set_footer(text=config.FOOTER)
             await ctx.reply(content=None, embed=embed)
 
@@ -78,7 +78,7 @@ class Users(commands.Cog):
                 description=answer,
                 colour=config.BLUE,
             )
-            embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+            embed.set_author(icon_url=self.bot.user.display_avatar.url, name=self.bot.user.name)
             embed.set_footer(text=config.FOOTER)
             await ctx.reply(content=None, embed=embed)
 
@@ -136,7 +136,7 @@ class Users(commands.Cog):
         embed.add_field(name="Boosting since", value=boosting, inline=False)
         embed.add_field(name="Roles", value=role_list, inline=False)
 
-        embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+        embed.set_author(icon_url=self.bot.user.display_avatar.url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
 
         await ctx.reply(embed=embed)
