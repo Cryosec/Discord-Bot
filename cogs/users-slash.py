@@ -21,7 +21,7 @@ class UsersSlash(commands.Cog):
         embed = discord.Embed(
             title="Roles information", description=config.ROLES_INFO, colour=config.BLUE
         )
-        embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+        embed.set_author(icon_url=self.bot.user.display_avatar.url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
         await ctx.respond(content=None, embed=embed)
 
@@ -48,7 +48,7 @@ class UsersSlash(commands.Cog):
             description=config.TWITCH_INFO,
             colour=config.PURPLE,
         )
-        embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+        embed.set_author(icon_url=self.bot.user.display_avatar.url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
         await ctx.respond(content=None, embed=embed)
 
@@ -61,9 +61,9 @@ class UsersSlash(commands.Cog):
             description=config.FAQ,
             colour=config.BLUE,
         )
-        embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+        embed.set_author(icon_url=self.bot.user.display_avatar.url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
-        await ctx.send(content=None, embed=embed)
+        await ctx.respond(content=None, embed=embed)
 
     # /merch command
     @slash_command(guild_ids=[config.GUILD], name="merch")
@@ -93,7 +93,7 @@ class UsersSlash(commands.Cog):
             title=f"Information on {member.name}#{member.discriminator}",
             colour=member.colour,
         )
-        embed.set_thumbnail(url=member.avatar.url)
+        embed.set_thumbnail(url=member.display_avatar.url)
 
         # Account age
         creation_date = member.created_at.strftime("%b-%d-%Y")
@@ -117,7 +117,7 @@ class UsersSlash(commands.Cog):
         embed.add_field(name="Boosting since", value=boosting, inline=False)
         embed.add_field(name="Roles", value=role_list, inline=False)
 
-        embed.set_author(icon_url=self.bot.user.avatar.url, name=self.bot.user.name)
+        embed.set_author(icon_url=self.bot.user.display_avatar.url, name=self.bot.user.name)
         embed.set_footer(text=config.FOOTER)
 
         await ctx.respond(embed=embed)

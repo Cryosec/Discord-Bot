@@ -189,6 +189,16 @@ class Database(commands.Cog):
         statement = "SELECT user_id, ban, mute, endBan, endMute FROM timers WHERE ban=true OR mute=true"
         return self._execute_query(statement, fetch='all')
 
+    def endTimerMute(self, user_id: str):
+        """Clears the mute timer of a user and keeps a running ban timer."""
+        statement = "UPDATE timers SET mute=false, endMute=NULL WHERE user_id=%s"
+        return self._execute_query(statement, params=(user_id,), commit=True)
+
+    def endTimerBan(self, user_id: str):
+        """Clears the ban timer of a user and keeps a running mute timer."""
+        statement = "UPDATE timers SET ban=false, endBan=NULL WHERE user_id=%s"
+        return self._execute_query(statement, params=(user_id,), commit=True)
+
     def delTimer(self, user_id):
         """Deletes all timer entries for a specific user."""
         statement = "DELETE FROM timers WHERE user_id=%s"

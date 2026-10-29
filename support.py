@@ -117,27 +117,6 @@ class Untimeout(discord.ui.View):
         self.stop()
 
 
-class Remove(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.user = None
-        self.op = None
-        self.inter = None
-
-    @discord.ui.button(label="Remove", style=discord.ButtonStyle.red)
-    async def remove(self, button: discord.ui.Button, interaction: discord.Interaction):
-
-        owner = interaction.message.author
-        role = interaction.message.guild.get_role(config.MOD_ID)
-
-        self.user = interaction.user
-        self.inter = interaction
-        if owner == interaction.user or role in interaction.user.roles:
-            await interaction.response.send_message(content="Removing embed...", ephemeral=True)
-            self.stop()
-        else:
-            await interaction.response.send_message(content="You cannot do this action", ephemeral=True)
-
 tz_TX = pytz.timezone("US/Central")
 TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
 

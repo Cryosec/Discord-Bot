@@ -1,7 +1,6 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
-import re
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 import discord
 from discord.ext import commands
@@ -15,6 +14,9 @@ log = support.get_logger(__name__)
 
 tz_TX = pytz.timezone("US/Central")
 TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
+
+# Stored in jac.link: without MESSAGE_CONTENT the bot cannot read the invite
+JAC_NO_LINK = "Not available"
 
 
 #def log(message):
@@ -142,6 +144,10 @@ class Events(commands.Cog):
                 await self.log_timeout(payload)
             elif change == "removed":
                 await self.log_timeout_removed(payload)
+        elif payload.action_type == discord.AuditLogAction.auto_moderation_user_communication_disabled:
+            # AutoMod TIMEOUT action: not a member_update entry
+            rule = (payload.extra or {}).get("auto_moderation_rule_name", "unknown")
+            await self.log_timeout(payload, author="AutoMod", reason=f"AutoMod rule: {rule}")
 
     async def log_kick(self, payload):
         """Manage logging of member kick."""
@@ -169,11 +175,12 @@ class Events(commands.Cog):
 
         self.database.addKick(str(member.id), str(member.name), payload.reason)
 
-    async def log_timeout(self, payload):
+    async def log_timeout(self, payload, author=None, reason=None):
         """Log a timeout, with a button to undo it."""
         guild = self.bot.get_guild(payload.guild_id)
         user = await self._get_user(payload.target_id)
-        author = await self._get_user(payload.user_id)
+        if author is None:
+            author = await self._get_user(payload.user_id)
 
         # Create button to undo timeout
         undo_button = support.Untimeout()
@@ -181,7 +188,7 @@ class Events(commands.Cog):
         channel = guild.get_channel(config.LOG_CHAN)
         await channel.send(
             embed=support.timeout_embed(
-                self.bot, user, author, payload.reason
+                self.bot, user, author, reason or payload.reason
             ),
             view=undo_button
         )
@@ -247,74 +254,16 @@ class Events(commands.Cog):
         if message.channel.id == getattr(config, "HONEYPOT_CHAN", 0):
             return
 
-        # Check if new user is sending links
-        #if await check_new_member_links(self, message):
-        #    return
-
-        # Check for invite URLs
-        await check_invites(self, message)
-
-        # Check for spam messages
-        if not await check_spam_v2(self, message):
-            await check_scam(self, message)
+        # Content filters (invites, scam, spam, blacklist) are Discord AutoMod
+        # rules now: see automod_rules.py and cogs/automod.py.
 
         # Check for Join-A-Clan stuff
         await check_jac(self, message)
-
-        # Word Blacklist filter
-        await check_blacklist(self, message)
-
-        # Stuff on links in messages
-        await check_msg_link(self, message)
 
 
 def setup(bot):
     """Add cog to the bot."""
     bot.add_cog(Events(bot))
-
-async def check_spam_v2(self, message) -> bool:
-    """Detects if a message has the typical scam format of @everyone and a link. Excludes admins and mods."""
-    admin_role = message.guild.get_role(config.ADMIN_ID)
-    mod_role = message.guild.get_role(config.MOD_ID)
-
-    # Spam / phishing filtering
-    scam_link = re.search(r"(?P<url>https?://[^\s]+)", message.content)
-
-    # if not admin or mod and message is typical spam, block and notify
-    if admin_role in message.author.roles or mod_role in message.author.roles:
-        return False
-
-    if scam_link is not None and "@everyone" in message.content:
-
-        # Remove spam message
-        try:
-            await message.delete()
-            # Add to kill counter
-            self.database.addKillCount(str(message.author.id))
-
-        except Exception as err:
-            log.error("Unable to delete spam message: %s", err)
-
-        if scam_link.group("url") not in config.SCAM:
-            log.info("Possible spam detected: %s", message.content)
-
-            # Add the URL to the temporary SCAM list in config.py
-            config.SCAM.append(scam_link.group("url"))
-
-            # Append the author ID to the SCAM_USER list in config.py
-            config.SCAM_USER.append(message.author.id)
-
-            # Send embed for moderators in the mod log channel
-            await scam_check_embed(self, message, scam_link.group("url"))
-        return True
-    elif scam_link is None and ("@everyone" in message.content or "@here" in message.content):
-        if any(x in message.content for x in config.NSFW):
-            try:
-                log.info("Possible NSFW spam detected: %s", message.content)
-                await scam_check_embed(self, message, "NSFW spam with no link")
-            except Exception as exc:
-                log.error("NSFW Spam filter error: %s", exc)
-    return False
 
 async def check_jac(self, message):
     """Check posts inside the Join-A-Clan channel to find duplicates within the time limit.
@@ -323,9 +272,10 @@ async def check_jac(self, message):
     self    -- self reference of the bot
     message -- message to check
 
-    If a message in the config.CLAN_CHAN channel is sent from the same user or contains the
-    same discord invite URL within the span of 14 days, intercept the message and warn the
-    user for violating the rules of the channel.
+    If a message in the config.CLAN_CHAN channel is sent from the same user within the
+    span of 14 days, intercept the message and warn the user for violating the rules of
+    the channel. Without the MESSAGE_CONTENT intent the invite link is not readable, so
+    the check is per author only.
     """
     if int(message.channel.id) == config.CLAN_CHAN:
         role = message.guild.get_role(config.MOD_ID)
@@ -355,433 +305,12 @@ async def check_jac(self, message):
             self.database.addKillCount(str(message.author.id))
 
         else:
-            # Regexp the link
-            link = re.search(r"(?P<url>[https?://]*discord.gg/[^\s]+)", message.content)
-
-            if link is None:
-                link = "No link posted"
-            else:
-                link = link.group("url")
-
-                # Check if link already in db
-                if link in map(lambda x: x['link'], jac):
-
-                    # Issue warning as link already exists
-                    await issue_warn(
-                        self,
-                        message,
-                        f"**WARNING:** {message.author.mention}, ad has already been posted in the last 14 days.",
-                    )
-                    await message.delete()
-                    # Add to kill counter
-                    self.database.addKillCount(str(message.author.id))
-                    return
-
             # Get timestamp
             now = datetime.now(tz_TX)
             date = now.strftime(TIME_FORMAT)
 
             # Add entry because wasn't there before
-            self.database.addJac(str(message.author.id), link, date)
-
-
-async def check_scam(self, message):
-    """Check each message to filter out possible scam or phishing URLs.
-
-    Keyword arguments:
-    self    -- self reference of the bot
-    message -- message to check
-
-    Each message will be scanned to check either a known scam/phishing domain or
-    suspicious text/phrases that were used by userbots to spread malicious URLs.
-    """
-    # Spam / phishing filtering
-    scam_link = re.search(r"(?P<url>https?://[^\s]+)", message.content)
-
-    if scam_link is not None:
-
-        # discord nitro scam, aggressive check
-        scam_msg = message.content.replace(scam_link.group("url"), "")
-
-        if any(y in scam_msg.lower() for y in config.SCAMTEXT):
-            try:
-
-                await message.delete()
-
-                # Add to kill counter
-                self.database.addKillCount(str(message.author.id))
-
-                if scam_link.group("url") not in config.SCAM:
-                    config.SCAM.append(scam_link.group("url"))
-                    log.info("Nitro scam blocked.")
-                    await scam_check_embed(self, message, scam_link.group("url"))
-
-            except:
-                log.exception("Message not found.")
-
-        # normal url scam check
-        if any(x in scam_link.group("url") for x in config.SCAMURLS):
-            try:
-
-                await message.delete()
-
-                # Add to kill counter
-                self.database.addKillCount(str(message.author.id))
-
-                if scam_link.group("url") not in config.SCAM:
-                    config.SCAM.append(scam_link.group("url"))
-                    log.info("General scam blocked.")
-                    await scam_check_embed(self, message, scam_link.group("url"))
-
-            except:
-                log.exception("Message not found.")
-    else:
-        # discord nitro scam, aggressive check pt.2
-        scam_msg = message.content
-
-        if any(y in scam_msg.lower() for y in config.SCAMTEXT):
-
-            await message.delete()
-
-            # Add to kill counter
-            self.database.addKillCount(str(message.author.id))
-
-            if scam_msg not in config.SCAM:
-                config.SCAM.append(scam_msg)
-
-                await scam_check_embed(self, message, scam_msg)
-                log.info("Nitro text scam blocked.")
-
-
-async def scam_check_embed(self, message, filtered_url):
-    """Generate an embed with buttons to manage possible scam or phishing messages.
-
-    Keyword arguments:
-    self         -- self reference of the bot
-    message      --  message to check
-    filtered_url -- URL that was filtered from the message
-    """
-
-    # Temporarily timeout the message author
-    try:
-        await message.author.timeout_for(duration=timedelta(days=1),
-                                        reason="Temporary timeout for spam review")
-    except Exception as err:
-        log.error("Couldn't timeout user for spam review: %s", err)
-
-    # Define a list of two buttons that will be displayed under the embed
-    # add filtered_url to custom_id to avoid action on pre-existing buttons
-    ban_button = support.Scam(filtered_url)
-
-    # Generate control embed in log channel
-    embed = discord.Embed(
-        title="Possible scam - manual review",
-        description="Review the blocked message ",
-        colour=config.RED,
-    )
-
-    msg = (
-            (message.content[:1020] + "...")
-            if len(message.content) > 1024
-            else message.content
-            )
-
-    embed.add_field(name="Suspicious message", value=msg, inline=False)
-    embed.add_field(name="Suspicious link", value=filtered_url)
-    embed.add_field(name="Channel", value=message.channel.mention)
-    embed.add_field(name="Author", value=message.author.mention)
-    embed.add_field(
-        name="Join date", value=message.author.joined_at.strftime(TIME_FORMAT)
-    )
-    embed.add_field(
-        name="Creation date", value=message.author.created_at.strftime(TIME_FORMAT)
-    )
-    embed.set_footer(text=config.FOOTER)
-
-    channel = message.guild.get_channel(config.LOG_CHAN)
-
-    await channel.send(embed=embed, view=ban_button)
-
-    # Wait for a mod to press a button
-    await ban_button.wait()
-
-    # If mod confirms ban
-    if ban_button.value:
-        log.info("Spam confirmed by %s", ban_button.user)
-        modrole = message.guild.get_role(config.MOD_ID)
-        if modrole not in message.author.roles:
-
-            new_embed = discord.Embed(
-                title="Possible scam - manual review completed",
-                description=f"Review of the blocked message was done by {ban_button.user}",
-                colour=config.GREEN,
-            )
-            new_embed.add_field(
-                name="Suspicious message", value=msg, inline=False
-            )
-            new_embed.add_field(name="Suspicious link", value=filtered_url)
-            new_embed.add_field(name="Author", value=message.author.mention)
-            new_embed.add_field(
-                name="Join date", value=message.author.joined_at.strftime(TIME_FORMAT)
-            )
-            new_embed.add_field(
-                name="Creation date",
-                value=message.author.created_at.strftime(TIME_FORMAT),
-            )
-
-            await ban_button.inter.message.edit(embed=new_embed, view=None)
-            await message.author.ban(
-                reason=f"Spam message confirmed by {ban_button.user}",
-                delete_message_seconds=43200, # 12 hours
-            )
-            try:
-                config.SCAM.remove(filtered_url)
-                config.SCAM_USER.remove(message.author.id)
-            except:
-                pass
-
-    # If mod cancels
-    else:
-        log.info("Spam negated by %s", ban_button.user)
-        new_embed = discord.Embed(
-            title="Possible scam - manual review completed",
-            description=f"Review of the blocked message was done by {ban_button.user}",
-            colour=config.GREEN,
-        )
-        new_embed.add_field(
-            name="Suspicious message", value=message.content, inline=False
-        )
-
-        filtered_url = (
-            (filtered_url[:1020] + "...")
-            if len(filtered_url) > 1024
-            else filtered_url
-            )
-
-        new_embed.add_field(name="Suspicious link", value=filtered_url)
-        new_embed.add_field(name="Author", value=message.author.mention)
-        new_embed.add_field(
-            name="Join date", value=message.author.joined_at.strftime(TIME_FORMAT)
-        )
-        new_embed.add_field(
-            name="Creation date", value=message.author.created_at.strftime(TIME_FORMAT)
-        )
-
-        await ban_button.inter.message.edit(embed=new_embed, view=None)
-        try:
-            await message.author.remove_timeout(reason="Spam review completed. Timeout removed")
-            config.SCAM.remove(filtered_url)
-            config.SCAM_USER.remove(message.author.id)
-        except:
-            pass
-
-async def check_invites(self, message):
-    """Check each message for unauthorized discord invites.
-
-    Keyword arguments:
-    self    -- self reference of the bot
-    message -- message to check
-
-    Perform a check on each message to intercept discord invites in any channel that
-    is not config.CLAN_CHAN and warn the user who posted it. If the URL is in
-    config.INVITE_WHITELIST, the message is ignored.
-    """
-    if "discord.gg/" in message.content or "discord.com/" in message.content or "discordapp.com/invite" in message.content:
-        #Stop if link is to another channel, maybe find a way to make this work better
-        if "discord.com/channels" in message.content:
-            return
-        # Check if in invite whitelist
-        if any(url in message.content for url in config.INVITE_WHITELIST):
-            return
-        else:
-            mod_role = message.guild.get_role(config.MOD_ID)
-            admin_role = message.guild.get_role(config.ADMIN_ID)
-            # if not admin or mod and message is typical spam, block and notify
-            if admin_role in message.author.roles or mod_role in message.author.roles:
-                pass
-            elif message.channel.id == config.CLAN_CHAN:
-                pass
-            else:
-
-                # Delete message
-                await message.delete()
-
-                # Add to kill counter
-                self.database.addKillCount(str(message.author.id))
-
-                # Check if invite is in banlist - immediately ban
-                if any(url in message.content for url in config.INVITE_BANLIST):
-                    await message.author.ban(reason="Blacklisted invite")
-                    return
-
-
-                # Testing: treat all invites as scams, don't log to channel
-
-                # extract URL with generic regex
-                message_url = re.search(r"(?P<url>https?://[^\s]+)", message.content)
-                if not message_url:
-                    # use a more specific regex
-                    message_url = re.search(r"(?P<url>(discord.gg|discord.com)/[^\s]+)", message.content)
-
-                if message_url:
-                    if message_url.group("url") not in config.SCAM:
-                        config.SCAM.append(message_url.group("url"))
-                        log.info("General scam blocked.")
-                        await scam_check_embed(self, message, message_url.group("url"))
-                else:
-                    log.warning("No message_url extracted from regexp")
-                    log.info("Possible scam blocked, no URL extracted")
-                    await scam_check_embed(self, message, "No url extracted")
-
-
-                # Commenting out the rest while testing
-                """
-                # Create warning message
-                await message.channel.send(
-                    f"**WARNING:** {message.author.mention}, do not post invite links."
-                )
-
-                reason = f"User posted invite link in {message.channel}"
-                self.database.addWarning(str(message.author.id), str(message.author.name), reason)
-
-                # Check if user is spamming invites, done horribly
-                if self.database.getWarnCount(str(message.author.id), reason) >= 3:
-                    await message.author.timeout_for(timedelta(days=1), reason="Too many invite warnings")
-
-                # Generate log embed
-                embed = discord.Embed(
-                    title="Warning issued!",
-                    description=f"Reason: {reason}",
-                    colour=config.YELLOW,
-                )
-                embed.add_field(name="User:", value=f"{message.author}")
-                embed.add_field(name="Issued by:", value=f"{self.bot.user.mention}")
-                msg = (
-                    (message.content[:1020] + "...")
-                    if len(message.content) > 1024
-                    else message.content
-                )
-                embed.add_field(name="Message:", value=msg, inline=False)
-                embed.set_footer(text=config.FOOTER)
-
-                channel = message.guild.get_channel(config.LOG_CHAN)
-                await channel.send(content=None, embed=embed)
-                log.info("Invite link blocked.")
-                """
-
-
-
-async def check_blacklist(self, message):
-    """Check each message for blacklisted words.
-
-    Keyword arguments:
-    self    -- self reference of the bot
-    message -- message to check
-
-    Perform a check on each message to intercept blacklisted words defined in
-    config.BLACKLIST and warn user who posted any.
-    """
-    # Delete and warn for use of blacklisted (offensive, racist and all that) words
-    if any(word in message.content.lower() for word in config.BLACKLIST):
-        role = message.guild.get_role(config.MOD_ID)
-        if role in message.author.roles:
-            pass
-        else:
-            await message.channel.send(
-                f"**WARNING:** {message.author.mention}, Use of offensive terms is prohibited."
-            )
-
-            reason = f"User sent prohibited word in {message.channel}"
-
-            self.database.addWarning(str(message.author.id), str(message.author.name), reason)
-
-            # Generate log embed
-            embed = discord.Embed(
-                title="Warning issued!",
-                description=f"Reason: {reason}",
-                colour=config.YELLOW,
-            )
-            embed.add_field(name="User:", value=f"{message.author}")
-            embed.add_field(name="Issued by:", value=f"{self.bot.user.name}")
-            msg = (
-                (message.content[:1020] + "...")
-                if len(message.content) > 1024
-                else message.content
-            )
-            embed.add_field(name="Message:", value=msg, inline=False)
-            embed.set_footer(text=config.FOOTER)
-
-            channel = message.guild.get_channel(config.LOG_CHAN)
-            await channel.send(content=None, embed=embed)
-            # Delete message
-            await message.delete()
-
-            # Add to kill counter
-            self.database.addKillCount(str(message.author.id))
-
-
-async def check_msg_link(self, message):
-    """Check if message contains a URL to another message in the same server and embed it.
-
-    Keyword arguments:
-    self    -- self reference of the bot
-    message -- message to check
-    """
-    # Embed the linked message showing content and author
-    if "discord.com/channels/" in message.content:
-        # Grab the link
-        link_reg = re.search(
-            r"(?P<url>[https?://]*discord.com/channels/[^\s]+)", message.content
-        )
-
-        if link_reg is None:
-            return
-
-        link_reg = link_reg.group("url")
-
-        # Split the link into its path components
-        link = link_reg.split("/")
-
-        # server_id = int(link[4])
-        channel_id = int(link[5])
-        message_id = int(link[6])
-
-        channel = message.guild.get_channel(channel_id)
-
-        msg = await channel.fetch_message(message_id)
-
-        # limit embed to 1024 chars, as per discord limits
-        msg.content = (
-            (msg.content[:1020] + "...") if len(msg.content) > 1024 else msg.content
-        )
-        embed = discord.Embed(
-            title=f"{msg.author}", description=msg.content, color=config.GREEN
-        )
-
-        # Check if message content is an image URL, then embed the image
-        if msg.attachments:
-            embed.set_image(url=msg.attachments[0].url)
-
-        # Define remove button
-        remove_button = support.Remove()
-
-        #embed.set_thumbnail(url=msg.author.avatar.url)
-        embed.add_field(name="Channel", value=msg.channel)
-        embed.add_field(
-            name="Time", value=msg.created_at.strftime(TIME_FORMAT) + " UTC"
-        )
-        embed.set_footer(text=config.FOOTER)
-
-        # Reply with remove button
-        reply = await message.reply(embed=embed, view=remove_button)
-
-        await remove_button.wait()
-
-        # Manage remove button behaviour
-        role = message.guild.get_role(config.MOD_ID)
-
-        if remove_button.user == msg.author or role in remove_button.user.roles:
-            await reply.delete(reason="Poster removed embed")
+            self.database.addJac(str(message.author.id), JAC_NO_LINK, date)
 
 
 async def issue_warn(self, message, warning):
@@ -812,8 +341,7 @@ async def issue_warn(self, message, warning):
         if count == 2 or count == 3:
             reason = "Kick: Multiple violations of 14-day rule in JAC"
 
-            self.database.addKick(str(message.author.id), str(message.author.name), reason)
-
+            # No addKick here: the kick audit log entry stores it (log_kick)
             try:
                 await message.author.send(
                     "You have been kicked from Drewski's Operators server for violating the 14-day wait period for clan ads multiple times."
@@ -847,67 +375,3 @@ async def issue_warn(self, message, warning):
 
     channel = message.guild.get_channel(config.LOG_CHAN)
     await channel.send(content=None, embed=embed)
-
-
-async def check_new_member_links(self, message) -> bool:
-    """Check if message is from a new user and contains links."""
-    # Check if user is in monitoring list
-    count = self.database.checkNewUser(str(message.author.id))
-
-    if count is not None:
-        # Regex to find any http/https link
-        link_found = re.search(r"https?://[^\s]+", message.content)
-
-        if link_found:
-            # Find all links in the message
-            all_links = re.findall(r"https?://[^\s]+", message.content)
-
-            # Check if all links are internal Discord message links to this server
-            discord_msg_pattern = re.compile(
-                rf"https?://(?:www\.)?discord\.com/channels/{message.guild.id}/\d+/\d+"
-            )
-            all_internal = all(discord_msg_pattern.match(link) for link in all_links)
-
-            if all_internal:
-                # All links are internal Discord message links to this server, allow them
-                return False
-
-            try:
-                await message.delete()
-
-                # Generate log embed
-                embed = discord.Embed(
-                    title="New User link removed",
-                    description=f"User {message.author.mention} is new to the server.\n\nLinks not allowed yet.",
-                    colour=config.YELLOW
-                )
-                embed.add_field(name="User:", value=f"{message.author}")
-                embed.add_field(name="Issued by:", value=f"{self.bot.user.mention}")
-                embed.add_field(name="Message:",
-                                value=f"{(message.content[:1020] + '...') if len(message.content) > 1024 else message.content}",
-                                inline=False)
-                embed.set_footer(text=config.FOOTER)
-
-                channel = message.guild.get_channel(config.LOG_CHAN)
-                await channel.send(content=None, embed=embed)
-
-                # Send DM to user explaining why
-                await message.author.send(
-                    f"Welcome to the server! For safety reasons, links are not allowed when you are new to the server. "
-                    f"Your message in {message.channel.mention} has been removed."
-                )
-            except Exception as e:
-                log.warning("Could not DM user %s or delete message: %s", message.author, e)
-
-            # Return True to indicate message was handled/deleted
-            return True
-        else:
-            # No link found, increment their safe message count
-            if count + 1 >= 5:
-                self.database.removeNewUser(str(message.author.id))
-                log.info("User %s has passed the new user check.", message.author)
-            else:
-                self.database.incrementNewUser(str(message.author.id))
-            return False
-
-    return False

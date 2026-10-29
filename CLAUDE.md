@@ -28,25 +28,33 @@ The bot requires a `.env` (secrets: `DISCORD_TOKEN`, `DB_USERNAME/PASSWORD/HOST/
 - **Frontend lint:** `cd webui/frontend && npm run lint`
 - **Docker (both processes in one container):** the root [Dockerfile](Dockerfile) builds the frontend, then its `CMD` runs gunicorn in the background and the bot in the foreground. Deployment is via the unRAID template `lord-franklin-bot.xml`.
 
-There is **no Python test suite** and no linter config for the Python code beyond inline `# pylint: disable=...` headers.
+- **Tests:** `python -m pytest -q tests` in a venv with `py-cord==2.6.1`, `pytz` and `pytest` (`requirements-dev.txt`). `tests/conftest.py` stubs `config.py` and `cogs.database` (no DB or Discord connection needed). There is no linter config beyond inline `# pylint: disable=...` headers.
+- **AutoMod rules:** `python automod_rules.py --check` validates `config.py` and prints the rules without API calls. Without flags it creates/updates the rules (alert only). `--enforce <rule…|all>` / `--alert-only <rule…>` add/remove the block action, `--disable` turns all bot rules off (rollback).
 
 ## Bot architecture
 
-`franky.py` is the entry point: it loads the cogs listed in `init_extensions`, configures intents (`presences`, `members`, `message_content`), sets the `!`/mention prefix and owner, then runs two `@tasks.loop` background jobs — `check_timers` (every 60 min: expires temp mutes/bans and prunes JAC entries older than 14 days) and `war_channel` (every 15 min). On `on_ready` it starts the **cogwatch** hot-reloader watching `cogs/` and registers the persistent `Survivor` button view.
+`franky.py` is the entry point: it loads the cogs listed in `bot_setup.INIT_EXTENSIONS` with the intents of `bot_setup.build_intents()`, sets the `!`/mention prefix and owner, then runs two `@tasks.loop` background jobs — `check_timers` (every 60 min, logic in [timers.py](timers.py): expires temp mutes/bans and prunes JAC entries older than 14 days) and `war_channel` (every 15 min). On `on_ready` it starts the **cogwatch** hot-reloader watching `cogs/` and registers the persistent `Survivor` button view.
+
+**No privileged intents.** Discord denied `members`, `message_content` and `presences`; all three are off. Consequences:
+- `message.content`, `embeds`, `attachments` are empty, except in DMs, in messages that mention the bot, and in interactions. Prefix commands work only as `@bot cmd`. Never write a filter that reads message content: use an AutoMod rule.
+- No member cache: use `guild.fetch_member` (handle `discord.NotFound`), never `guild.get_member`/`payload.member`.
+- No `on_member_join/remove/update`: joins come from the system join message (`support.is_member_join`), kicks and timeouts from `on_raw_audit_log_entry` (needs the bot's View Audit Log permission).
 
 Cogs live in `cogs/`, each exporting `setup(bot)`:
 
-- [cogs/events.py](cogs/events.py) — the automated moderation engine. `on_message` runs a filter pipeline (invite links, spam/scam/phishing, blacklisted words, Join-A-Clan 14-day dedup, message-link embedding); `on_member_join/ban/remove/update` post log embeds with **interactive button views** (undo timeout, unban, confirm-scam-ban) defined in `support.py`.
-- [cogs/moderation.py](cogs/moderation.py) — prefix commands (`!mute`, `!ban`, `!tempban`, `!kick`, `!warn`, `!status`, `!delete`, …), gated by a `cog_check` on the mod role.
-- [cogs/moderation_slash.py](cogs/moderation_slash.py) — the **same moderation features as slash commands** (`/mute`, `/ban`, …), registered with `guild_ids=[config.GUILD]`. Prefix and slash versions coexist; changes to one often belong in the other.
+- [cogs/automod.py](cogs/automod.py) — acts on the Discord AutoMod rules created by [automod_rules.py](automod_rules.py) (`on_auto_moderation_action_execution`; the payload has no content, only rule, user, channel, matched keyword). Rule → action: `invite-banlist` → ban; `invites`/`scam`/`everyone-spam` → 1-day timeout + Ban/Cancel review embed; `blacklist` → warn + DB. Acts only on the alert action event and dedups per user, so one message gives one action. With `config.AUTOMOD_DRY_RUN` not exactly `False` (also when missing) it only posts "AutoMod dry run" embeds.
+- [cogs/events.py](cogs/events.py) — event logging. `on_message` handles the join system message and the Join-A-Clan 14-day dedup (per author only: the invite link is unreadable). `on_member_ban` and `on_raw_audit_log_entry` (kick, timeout, AutoMod timeout) post log embeds with **interactive button views** (undo timeout, unban) defined in `support.py`.
+- [cogs/moderation.py](cogs/moderation.py) — `!ping` and joke prefix commands (`lundy`, `toxy`, `floppa`, `avyy`, `lotto`, `tim`), gated by a `cog_check` on the mod role. Moderation itself is slash-only.
+- [cogs/moderation_slash.py](cogs/moderation_slash.py) — moderation slash commands (`/mute`, `/ban`, …), registered with `guild_ids=[config.GUILD]`, hidden from users without `MOD_PERMISSIONS` (Manage Messages) and checked with `has_any_role`. Kick and ban DB rows are written by the event handlers, not by the commands.
 - [cogs/users.py](cogs/users.py) / [cogs/users-slash.py](cogs/users-slash.py) — public info commands (`roles`, `twitch`, `faq`, `me`, `rr`).
 - [cogs/admin.py](cogs/admin.py) — owner-only (`@commands.is_owner()`) hidden commands: load/unload/reload extensions, `reconf` (hot-reload `config.py` and `support.py`), etc.
 - [cogs/database.py](cogs/database.py) — the `Database` cog: MariaDB **connection-pool** wrapper (`POOL_CONFIG`, `_execute_query`). It is a stateless wrapper, so the code instantiates it in several places (module-level in `franky.py`, per-cog in `events.py`) — that is intentional and fine.
-- `giveaway.py`, `poll.py`, `modalpoll.py` — present but **disabled** (commented out in `franky.py`'s `init_extensions`).
+- [cogs/honeypot.py](cogs/honeypot.py) — bans (or mutes) whoever posts in `config.HONEYPOT_CHAN`.
+- `giveaway.py`, `poll.py`, `modalpoll.py` — present but **disabled** (commented out in `bot_setup.INIT_EXTENSIONS`).
 
 [support.py](support.py) holds shared helpers: the `discord.ui.View` button classes used by event embeds, the persistent `Survivor` role-button view, and `get_logger()` (rotating file logs under `logs/`).
 
-[config.py](config.py) is **gitignored** and single-guild specific: it hardcodes all guild/role/channel IDs, embed colors, and the filter lists (`BLACKLIST`, `SCAMURLS`, `SCAMTEXT`, `INVITE_WHITELIST`, `INVITE_BANLIST`) plus command help strings. Porting the bot to another server means rewriting this file. `!reconf` reloads it without restarting.
+[config.py](config.py) is **gitignored** and single-guild specific: it hardcodes all guild/role/channel IDs, embed colors, and the filter lists (`BLACKLIST`, `SCAMURLS`, `SCAMTEXT`, `NSFW`, `INVITE_WHITELIST`, `INVITE_BANLIST`) plus command help strings. The filter lists are read only by `automod_rules.py`: after a change, run it again. AutoMod settings: `AUTOMOD_DRY_RUN` (bool, default dry run) and optional `AUTOMOD_ALERT_CHAN` (defaults to `LOG_CHAN`). Porting the bot to another server means rewriting this file. `!reconf` reloads it without restarting.
 
 ## Data model
 
@@ -67,8 +75,9 @@ MariaDB tables (no ORM, no migration framework): `jac`, `timers`, `warn_user`, `
 
 ## Testing & rollout
 
-There is no automated test coverage, and this is a live single-guild production bot with irreversible moderation actions. Before deploying a change:
+This is a live single-guild production bot with irreversible moderation actions, and there is **no test guild**: the first contact with real Discord is production. Before deploying a change:
 
-- Validate against a **separate test guild** (or a staged bot instance) rather than editing the production bot directly — update `config.py` IDs to point at the test guild.
+- Add or update a pytest test for every handler or command you touch (mock bot/guild/channel; build real py-cord payload objects such as `discord.raw_models.RawAuditLogEntryEvent(data)` or `discord.AutoModActionExecutionEvent(state, data)` so attribute-name errors show up). The suite must pass.
+- Roll out new automated actions in dry run first (`AUTOMOD_DRY_RUN = True`, AutoMod rules alert-only), then enforce one rule at a time.
 - Manually exercise the affected path end-to-end (e.g. for a moderation change, run the command and confirm the DB row + log embed + button flow all behave).
 - When a change touches the DB layer, verify **both** clients — the bot (`cogs/database.py`) and the web API (`webui/backend/app.py`) — still agree on the schema.

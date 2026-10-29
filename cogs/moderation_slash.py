@@ -14,6 +14,10 @@ import support
 #Setup module logging
 log = support.get_logger(__name__)
 
+# Hide the commands from users without this permission. Server admins can
+# change it in Server Settings > Integrations. The real check is has_any_role.
+MOD_PERMISSIONS = discord.Permissions(manage_messages=True)
+
 
 class ModerationSlash(commands.Cog):
 
@@ -22,7 +26,7 @@ class ModerationSlash(commands.Cog):
         self.database = db.Database(self.bot)
 
     # /mute Command
-    @slash_command(guild_ids=[config.GUILD], name="mute", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="mute", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def mute(
         self,
@@ -141,7 +145,7 @@ class ModerationSlash(commands.Cog):
             await channel.send(content=None, embed=embed)
 
     # /unmute Command
-    @slash_command(guild_ids=[config.GUILD], name="unmute", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="unmute", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def unmute(
         self,
@@ -163,7 +167,7 @@ class ModerationSlash(commands.Cog):
             )
 
     # /ban Command
-    @slash_command(guild_ids=[config.GUILD], name="ban", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="ban", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def ban_user(
         self,
@@ -214,7 +218,7 @@ class ModerationSlash(commands.Cog):
             await channel.send(content=None, embed=embed)
 
     # /tempban Command
-    @slash_command(guild_ids=[config.GUILD], name="tempban", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="tempban", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def tempban_user(
         self,
@@ -247,7 +251,7 @@ class ModerationSlash(commands.Cog):
                 mods = re.findall(r"([0-9]+?[wdhms])+?", duration)
 
                 if not mods:
-                    await ctx.send("**ERROR**: `duration` format is incorrect.")
+                    await ctx.respond("**ERROR**: `duration` format is incorrect.", ephemeral = True)
                     return
 
                 dur = ""
@@ -330,7 +334,7 @@ class ModerationSlash(commands.Cog):
 
 
     # /kick Command
-    @slash_command(guild_ids=[config.GUILD], name="kick", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="kick", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def kick_user(
         self,
@@ -341,7 +345,7 @@ class ModerationSlash(commands.Cog):
         """Kick selected member from the server."""
         role = ctx.guild.get_role(config.MOD_ID)
         if role in member.roles:
-            await ctx.send("You cannot kick a moderator through me.")
+            await ctx.respond("You cannot kick a moderator through me.", ephemeral = True)
         else:
 
             # Record kick
@@ -361,7 +365,7 @@ class ModerationSlash(commands.Cog):
             # await channel.send(content=None, embed=embed)
 
     # /status Command
-    @slash_command(guild_ids=[config.GUILD], name="status", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="status", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def status(
         self, ctx, user: Option(discord.User, "User to lookup", required=True)
@@ -392,12 +396,12 @@ class ModerationSlash(commands.Cog):
                 warn_reasons = self.database.getWarnReasons(str(member.id))
                 warn_user = self.database.getWarnUserByID(str(member.id))
 
-                if len(warn_user) > 0:
+                if warn_user:
                     embed = discord.Embed(
                         title=f"Status of user {member}",
                         description="\n".join(
-                            "{}: {}".format(*k)
-                            for k in enumerate(warn_reasons)
+                            "{}: {}".format(i, k['reason'])
+                            for i, k in enumerate(warn_reasons)
                         ),
                         colour=config.GREEN,
                     )
@@ -442,13 +446,13 @@ class ModerationSlash(commands.Cog):
             else:
                 warn_reasons = self.database.getWarnReasons(str(user.id))
                 warn_user = self.database.getWarnUserByID(str(user.id))
-                if len(warn_user) > 0:
+                if warn_user:
                     embed = discord.Embed(
                         title=f"Status of user {user}",
                         description="**User is no longer in the server**\n"
                         + "\n".join(
-                            "{}: {}".format(*k)
-                            for k in enumerate(warn_reasons)
+                            "{}: {}".format(i, k['reason'])
+                            for i, k in enumerate(warn_reasons)
                         ),
                         colour=config.GREEN,
                     )
@@ -477,7 +481,7 @@ class ModerationSlash(commands.Cog):
             await ctx.respond("Something went wrong")
 
     # /warn Command
-    @slash_command(guild_ids=[config.GUILD], name="warn", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="warn", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def warn(
         self,
@@ -508,7 +512,7 @@ class ModerationSlash(commands.Cog):
             print("WARNING: oof, warn command broke")
 
     # /unwarn command
-    @slash_command(guild_ids=[config.GUILD], name="unwarn", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="unwarn", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def unwarn(
         self,
@@ -545,35 +549,8 @@ class ModerationSlash(commands.Cog):
                     title="User is not part of the server", colour=config.YELLOW
                 )
             )
-    """
-    # /cwarn Command
-    @slash_command(guild_ids=[config.GUILD], name="cwarn", default_permission=False)
-    @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
-    async def cwarn(
-        self,
-        ctx,
-        member: Option(
-            discord.Member, "Member for which to clear all warnings", required=True
-        ),
-    ):
-        # Remove all warnings from a user's warning list.
-        if member is not None:
-            self.database.delAllWarnings()
-            await ctx.respond(
-                embed=discord.Embed(
-                    title=f"Warnings cleared for user {member}", colour=config.GREEN
-                )
-            )
-            print(f"Warnings for user {member} cleared.")
-        else:
-            await ctx.respond(
-                emved=discord.Embed(
-                    title="User is not part of the server", colour=config.YELLOW
-                )
-            )
-    """
     # /jac Command
-    @slash_command(guild_ids=[config.GUILD], name="jac", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="jac", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def jac_details(
         self, ctx, member: Option(discord.Member, "Member for which to show JAC status")
@@ -605,7 +582,7 @@ class ModerationSlash(commands.Cog):
             await ctx.respond("User is not in the database")
 
     # /unjac command
-    @slash_command(guild_ids=[config.GUILD], name="unjac", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="unjac", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def unjac(
         self,
@@ -628,7 +605,7 @@ class ModerationSlash(commands.Cog):
             )
 
     # /timers Command
-    @slash_command(guild_ids=[config.GUILD], name="timers", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="timers", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def show_timers(self, ctx, group: str = None):
         """Show a list of currently active timers."""
@@ -638,11 +615,11 @@ class ModerationSlash(commands.Cog):
             timers = []
             for elem in t:
 
-                usr = await self.bot.fetch_user(int(elem[0]))
-                ban = str(t[elem][1])
-                mute = str(t[elem][2])
-                endBan = str(t[elem][3])
-                endMute = str(t[elem][4])
+                usr = await self.bot.fetch_user(int(elem['user_id']))
+                ban = str(elem['ban'])
+                mute = str(elem['mute'])
+                endBan = str(elem['endBan'])
+                endMute = str(elem['endMute'])
 
 
                 timers.append(
@@ -678,7 +655,7 @@ class ModerationSlash(commands.Cog):
                 await ctx.respond(embed=embed)
 
     # /delete Command
-    @slash_command(guild_ids=[config.GUILD], name="delete", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="delete", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def delete_messages(
         self, ctx, messages: Option(int, "Number of messages to delete", required=True)
@@ -700,7 +677,7 @@ class ModerationSlash(commands.Cog):
         await channel.send(content=None, embed=embed)
 
     # /slow Command
-    @slash_command(guild_ids=[config.GUILD], name="slow", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="slow", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def slowmode(
         self,
@@ -736,7 +713,7 @@ class ModerationSlash(commands.Cog):
             print(f"Error setting slowmode for channel {channel}")
 
     # /timeout command
-    @slash_command(guild_ids=[config.GUILD], name="timeout", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="timeout", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def timeout(
         self,
@@ -753,7 +730,7 @@ class ModerationSlash(commands.Cog):
         await ctx.respond(f"Member {member} timed out for {minutes} minutes.")
 
     # /kc
-    @slash_command(guild_ids=[config.GUILD], name="kc", default_permission=False)
+    @slash_command(guild_ids=[config.GUILD], name="kc", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
     async def killcount(
         self,

@@ -3,8 +3,7 @@
 import os
 import logging
 from logging.handlers import RotatingFileHandler
-import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 from dotenv import load_dotenv
 import discord
@@ -12,6 +11,8 @@ from discord.ext import commands, tasks
 from cogwatch import Watcher
 import config
 import support
+import bot_setup
+import timers
 import cogs.database as db
 
 #Setup module logging
@@ -41,25 +42,7 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 # Bot setup
-init_extensions = [
-    "cogs.admin",
-    "cogs.moderation",
-    "cogs.moderation_slash",
-    "cogs.users",
-    "cogs.users-slash",
-    "cogs.events",
-    "cogs.honeypot",
-    #"cogs.giveaway",
-    #"cogs.poll",
-    #"cogs.modalpoll",
-]
-
-intents = discord.Intents.default()
-intents.presences = False  # unused: no code reads presence/activity/status; keep off so the bot doesn't crash if the portal intent is disabled
-# Discord denied the privileged intents. Kicks and timeouts come from the audit
-# log (Intents.moderation), joins from the system join message.
-intents.members = False
-intents.message_content = False
+intents = bot_setup.build_intents()
 
 bot = commands.Bot(
     command_prefix=commands.when_mentioned_or("!"),
@@ -73,96 +56,12 @@ database = db.Database(bot)
 # Here starts the logic
 if __name__ == "__main__":
     """Load the extensions from the list and launch a warning on failure."""
-    for extension in init_extensions:
+    for extension in bot_setup.INIT_EXTENSIONS:
         try:
             print(f"INFO: Loading extension {extension}")
             bot.load_extension(extension)
         except Exception as exception:
             log.exception("Failed to load extension %s", extension)
-
-
-async def check_jac_timers(now):
-    """Check which JAC timers have surpassed 14 days and remove from list."""
-    #print("Checking if there are JAC logs to remove...")
-
-    jac = database.getJac()
-    for elem in jac:
-        # entry_time = datetime.strptime(jac[elem]['date'].split(" ")[0],'%b-%d-%Y')
-        entry_time = datetime.strptime(elem['date'], "%b-%d-%Y %H:%M:%S")
-        delta = timedelta(days=14)
-        newtime = entry_time + delta
-
-        # check if 14 days have passed
-        if newtime < now:
-            print(f"Removing entry for {elem['user_id']}")
-            #del jac[elem]
-            database.delJac(elem['user_id'])
-
-
-async def check_mute_timers(now, time_db, guild, channel, mem):
-    """Check which finished mute timers have been missed and remove the mute."""
-    mute_time = datetime.strptime(time_db[4], "%b-%d-%Y %H:%M:%S")
-
-    # If timer ran out, unmute user
-    if mute_time < now:
-        print(f"\nUser {mem} needs to be unmuted.")
-
-        try:
-            member = await guild.fetch_member(int(mem))
-            role = guild.get_role(config.MUTE_ID)
-            # Create embed to log unmuting
-            embed = discord.Embed(
-                title="Timed mute complete",
-                description=f"User {member} has been unmuted automatically.",
-                colour=config.YELLOW,
-            )
-            embed.set_footer(text=config.FOOTER)
-
-            await channel.send(content=None, embed=embed)
-            await member.remove_roles(role)
-
-            database.delTimer(str(mem))
-
-        except:
-            log.exception("\nError in fetching user, removing entry from db...")
-            database.delTimer(str(mem))
-
-
-async def check_ban_timers(now, time_db, guild, channel, mem):
-    """Check which finished ban timers have been missed and remove the ban"""
-    ban_time = datetime.strptime(time_db['endBan'], "%b-%d-%Y %H:%M:%S")
-
-    # If timer ran out, unban user
-    if ban_time < now:
-
-        user = await bot.fetch_user(int(mem))
-        # Create embed to log unbanning
-        embed = discord.Embed(
-            title="Timed ban complete",
-            description=f"User {user.name}#{user.discriminator} \
-                    has been unbanned automatically.",
-            colour=config.YELLOW,
-        )
-        embed.set_footer(text=config.FOOTER)
-
-        await channel.send(content=None, embed=embed)
-
-        try:
-            await guild.unban(user)
-        except:
-            log.exception("Error while executing timed unban")
-        database.delTimer(str(mem))
-
-    # Re-add the timer to the list -- this could cause duplicate timers
-    elif ban_time > now:
-        user = await bot.fetch_user(int(mem))
-        print(f"\nUser {mem} is tempbanned. Adding to wait...")
-        await asyncio.sleep((ban_time - now).total_seconds())
-        try:
-            await guild.unban(user)
-        except:
-            log.exception("Error while executing timed unban")
-        database.delTimer(str(mem))
 
 
 @tasks.loop(minutes=60)
@@ -180,32 +79,9 @@ async def check_timers():
     # Run through the timers
     # JAC refers to channel join-a-clan, where clan ads are posted
     try:
-        await check_jac_timers(now)
-
-        #print("Checking if I missed some unbanning or unmuting...")
-        timers = database.getTimers()
-
-        # Cycle database to check for timed events to resume
-        for elem in timers:
-            print(
-                elem['user_id'] + "- Ban: " + str(elem['ban']) + ", Mute: " + str(elem['mute'])
-            )
-            if elem['mute']:
-                await check_mute_timers(now, elem, guild, channel, elem['user_id'])
-
-            if elem['ban']:
-                await check_ban_timers(now, elem, guild, channel, elem['user_id'])
-
-            # If there are no more timers for a user, there's no need to keep track of them
-            if not elem['mute'] and not elem['ban']:
-                print(f"\nUser {elem['user_id']} has no more timers. Removing from db...")
-                database.delTimer(str(elem[0]))
-
-        #print("Done! Waiting 60 minutes for next check...")
-        #print("-----------")
+        await timers.check_all(bot, database, guild, channel, now)
     except:
         log.exception("Error while checking timers, waiting next loop...")
-        #print("-----------")
 
 @tasks.loop(minutes=15)
 async def war_channel():

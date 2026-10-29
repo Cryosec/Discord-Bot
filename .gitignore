@@ -32,3 +32,7 @@ database.old
 /todo.md
 
 # NOTE: webui/ is intentionally tracked (previously ignored as /webui)
+
+# ─── Local dev ───
+.venv/
+.pytest_cache/
