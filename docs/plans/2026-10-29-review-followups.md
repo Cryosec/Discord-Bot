@@ -241,3 +241,21 @@ callback sets the timestamp. Frontend: `npm run lint` and `npm run build`
 Each task is one commit: `git revert` per task. Task 3 changes the button
 format: embeds posted after deploy carry the new custom_ids, so reverting Task 3
 makes those buttons dead (same as today's behaviour after a restart).
+
+## Manual test list (before and right after the deploy)
+
+There is no test guild: run these on production, right after the restart, with a test account.
+
+Regression suite first: `python -m pytest -q tests` (all green), `cd webui/frontend && npm run build`.
+
+1. **Restart, not hot reload.** Tasks 3 and 4 change `support.py`, `timers.py` and `franky.py`, which cogwatch does not reload. Restart the container.
+2. **Old embeds.** Log embeds posted before the restart have dead buttons ("This interaction failed"). Handle those by hand.
+3. **Unban.** Ban the test account with `/ban` (with a reason, then once without one). Check: one log embed only, with `Reason`, `User ID` and the mod name in the audit log. Press Unban: user unbanned, embed "User ban - canceled", buttons gone, ban counter decremented in the dashboard. Press as a non-mod: refused.
+4. **Unban after restart.** Ban, restart the bot, press Unban on that embed: it works.
+5. **Stale Unban.** Ban (reason A), unban by hand, ban again (reason B). Press Unban on the first embed: "A newer ban replaced this one", nothing changes.
+6. **Undo timeout.** `/timeout` the test account. Press Undo: timeout removed, embed "User timeout - removed". Time out again, then with another length, press Undo on the first embed: refused.
+7. **Double press.** Two mods press the same button at once: one action, the other gets "already handled".
+8. **Scam review** (only once AutoMod is enforcing `scam`/`invites`): one review embed, no extra timeout log. Cancel removes the timeout; Ban bans with 12 h of messages deleted.
+9. **Honeypot** (with `HONEYPOT_AUTOBAN = False`): one review embed, no extra timeout log. Release and Ban work.
+10. **Async DB.** `/warn`, `/unwarn`, `/mute` with a duration, `/tempban`, `/timers`, `/kc`, `/jac post` and the hourly timer job behave as before. No "coroutine was never awaited" in `logs/`.
+11. **Web UI.** Log in as a mod: works. Remove the mod role from a test mod: within 15 min (at the next request or the 5-min status poll) the dashboard logs out. Give the role back: login works again.

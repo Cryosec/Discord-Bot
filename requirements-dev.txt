@@ -1,1 +1,10 @@
+# Test dependencies. The DB driver (mariadb) is stubbed in the tests.
 pytest
+py-cord==2.8.1
+pytz
+# tests/test_webui_auth.py imports webui/backend/app.py
+Flask>=2.0
+Flask-Session
+redis
+requests
+python-dotenv
