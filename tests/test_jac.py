@@ -292,8 +292,8 @@ def test_unexpected_errors_still_answer_the_user(env, failure):
 def test_concurrent_posts_by_the_same_user_publish_once(env):
     rows = []
     env.cog.database.getJac.side_effect = lambda: list(rows)
-    env.cog.database.addJac.side_effect = lambda u, l, d: rows.append(
-        {"user_id": u, "link": l, "date": d})
+    env.cog.database.addJac.side_effect = lambda u, l, d, guild_id=None: rows.append(
+        {"user_id": u, "link": l, "date": d, "guild_id": guild_id})
 
     async def slow_invite(code):
         await asyncio.sleep(0.01)
@@ -343,3 +343,47 @@ def test_jacsetup_posts_and_pins_the_button(env):
     asyncio.run(run())
     assert isinstance(env.channel.send.await_args.kwargs["view"], jac.JacPostView)
     message.pin.assert_awaited_once()
+
+
+# --- Dedup by server id -----------------------------------------------------------
+
+def test_same_server_with_another_invite_code_is_rejected(env):
+    env.cog.database.getJac.return_value = [
+        {"user_id": "77", "link": "https://discord.gg/other", "date": _recent(), "guild_id": "1234"}]
+    env.submit()
+    _rejected(env, "server", "already")
+
+
+def test_rows_without_server_id_fall_back_to_the_invite_code(env):
+    env.cog.database.getJac.return_value = [
+        {"user_id": "77", "link": "https://discord.gg/other", "date": _recent()},
+        {"user_id": "78", "link": "https://discord.gg/third", "date": _recent(), "guild_id": None}]
+    env.submit()
+    env.channel.send.assert_awaited_once()
+
+
+def test_old_server_rows_do_not_block(env):
+    old = (datetime.now(jac.tz_TX) - timedelta(days=15)).strftime(jac.TIME_FORMAT)
+    env.cog.database.getJac.return_value = [
+        {"user_id": "77", "link": "https://discord.gg/other", "date": old, "guild_id": "1234"}]
+    env.submit()
+    env.channel.send.assert_awaited_once()
+
+
+def test_server_id_is_stored(env):
+    env.submit()
+    assert env.cog.database.addJac.call_args.kwargs["guild_id"] == "1234"
+
+
+def test_group_dm_invite_is_rejected(env):
+    env.bot.fetch_invite.return_value.guild = None
+    env.submit()
+    _rejected(env, "server")
+
+
+def test_duplicate_code_is_refused_without_an_api_call(env):
+    env.cog.database.getJac.return_value = [
+        {"user_id": "77", "link": f"https://discord.gg/{CODE}", "date": _recent(), "guild_id": "1234"}]
+    env.submit()
+    _rejected(env, "already")
+    env.bot.fetch_invite.assert_not_awaited()

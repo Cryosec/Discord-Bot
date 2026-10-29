@@ -59,6 +59,7 @@ class JacPost:
     link: str
     platforms: list = field(default_factory=list)
     description: str = ""
+    guild_id: str | None = field(default=None, compare=False)  # set by validate
 
 
 class JacPostModal(discord.ui.DesignerModal):
@@ -215,13 +216,17 @@ class Jac(commands.Cog):
 
         # check_timers removes rows older than 14 days only once per hour
         now = datetime.now(tz_TX).replace(tzinfo=None)
+        recent = []
         for row in self.database.getJac():
             try:
                 again = datetime.strptime(row['date'], TIME_FORMAT) + timedelta(days=JAC_DAYS)
             except (TypeError, ValueError):
                 again = None
-            if again is not None and again < now:
-                continue
+            if again is None or again >= now:
+                recent.append((row, again))
+
+        # Checks that need no API call first
+        for row, again in recent:
             if row['user_id'] == str(user_id):
                 when = f" You can post again after {again.strftime(TIME_FORMAT)} (US/Central)." if again else ""
                 return f"You can post one ad every {JAC_DAYS} days.{when}"
@@ -232,8 +237,17 @@ class Jac(commands.Cog):
             invite = await self.bot.fetch_invite(code)
         except discord.NotFound:
             return "This invite is invalid or expired."
-        if invite.guild is not None and invite.guild.id == config.GUILD:
+        if invite.guild is None:
+            return "The invite must be to a Discord server, not to a group DM."
+        if invite.guild.id == config.GUILD:
             return "Post an invite to your clan server, not to this server."
+
+        # Same server with another invite code. Rows from before the guild_id
+        # column (or from the web UI) have no server id: the code check covers them.
+        guild_id = str(invite.guild.id)
+        if any(str(row.get('guild_id')) == guild_id for row, _ in recent if row.get('guild_id')):
+            return f"This server was already posted in the last {JAC_DAYS} days."
+        post.guild_id = guild_id
         return None
 
     async def submit(self, interaction: discord.Interaction, post: JacPost):
@@ -265,7 +279,8 @@ class Jac(commands.Cog):
         message = await channel.send(embed=embed)
 
         try:
-            self.database.addJac(str(user.id), link, datetime.now(tz_TX).strftime(TIME_FORMAT))
+            self.database.addJac(str(user.id), link, datetime.now(tz_TX).strftime(TIME_FORMAT),
+                                 guild_id=post.guild_id)
         except Exception:
             log.exception("Clan ad of %s posted but not stored", user.id)
         log.info("Clan ad posted by %s: %s", user.id, link)

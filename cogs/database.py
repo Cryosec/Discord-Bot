@@ -55,6 +55,9 @@ POOL_CONFIG = {
     # 'pool_reset_session': True # Optional: Reset session variables when connection is returned
 }
 
+# "Unknown column": a migration in migrations/ did not run yet
+ER_BAD_FIELD_ERROR = 1054
+
 # --- Database Class ---
 class Database(commands.Cog):
 
@@ -142,8 +145,11 @@ class Database(commands.Cog):
                 # log.debug("Returned connection to pool.")
 
     def getJac(self):
-        """Retrieves all JAC entries."""
-        statement = "SELECT user_id, link, date FROM jac ORDER BY user_id DESC"
+        """Retrieves all JAC entries.
+
+        SELECT *: rows have guild_id only after migrations/2026-10-29_jac_guild_id.sql.
+        """
+        statement = "SELECT * FROM jac ORDER BY user_id DESC"
         return self._execute_query(statement, fetch='all')
 
     def getJacByID(self, user_id: str):
@@ -151,10 +157,20 @@ class Database(commands.Cog):
         statement = "SELECT user_id, link, date FROM jac WHERE user_id=%s"
         return self._execute_query(statement, params=(user_id,), fetch='all')
 
-    def addJac(self, user_id: str, link: str, date: str):
-        """Adds a new entry to the jac table."""
+    def addJac(self, user_id: str, link: str, date: str, guild_id: str = None):
+        """Adds a new entry to the jac table, with the server id of the invite if known."""
         statement = "INSERT INTO jac (user_id, link, date) VALUES (%s, %s, %s)"
-        return self._execute_query(statement, params=(user_id, link, date), commit=True)
+        if guild_id is None:
+            return self._execute_query(statement, params=(user_id, link, date), commit=True)
+        try:
+            return self._execute_query(
+                "INSERT INTO jac (user_id, link, date, guild_id) VALUES (%s, %s, %s, %s)",
+                params=(user_id, link, date, guild_id), commit=True)
+        except mariadb.Error as err:
+            if getattr(err, "errno", None) != ER_BAD_FIELD_ERROR:
+                raise
+            log.warning("jac.guild_id is missing: run migrations/2026-10-29_jac_guild_id.sql")
+            return self._execute_query(statement, params=(user_id, link, date), commit=True)
 
     def delJac(self, user_id: str):
         """Deletes all JAC entries for a specific user_id."""
