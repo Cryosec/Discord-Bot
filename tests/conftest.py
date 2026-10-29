@@ -8,7 +8,7 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -70,3 +70,63 @@ except ImportError:
 _db_stub = types.ModuleType("cogs.database")
 _db_stub.Database = lambda bot: MagicMock()
 sys.modules.setdefault("cogs.database", _db_stub)
+
+
+@pytest.fixture
+def make_press():
+    """Build the interaction of a persistent-button press on a log message.
+
+    `build(guild, embed, mod=True)` returns an object with `.interaction`
+    and `.message` (the message that `channel.fetch_message` returns: its
+    `components` become empty after `edit`, as for a closed Discord message).
+    `click(make_view, custom_id, *interactions)` builds the view inside the loop and runs the callbacks of one button,
+    all together (concurrent presses).
+    """
+    import asyncio
+    import config
+
+    def build(guild, embed, mod=True):
+        message = MagicMock()
+        message.id = 4242
+        message.embeds = [embed]
+        message.components = [object()]
+
+        async def edit(**kwargs):
+            if kwargs.get("view") is None:
+                message.components = []
+
+        message.edit = AsyncMock(side_effect=edit)
+        role = MagicMock()
+        role.id = config.MOD_ID if mod else -1
+        interaction = MagicMock()
+        interaction.user.roles = [role]
+        interaction.user.__str__ = lambda self: "mod#1"
+        interaction.guild = guild
+        interaction.message.id = message.id
+
+        async def fetch(_message_id):
+            await asyncio.sleep(0)  # yield, so concurrent presses really interleave
+            return message
+
+        interaction.channel.fetch_message = AsyncMock(side_effect=fetch)
+        interaction.response.defer = AsyncMock()
+        interaction.response.send_message = AsyncMock()
+        interaction.followup.send = AsyncMock()
+        return types.SimpleNamespace(interaction=interaction, message=message)
+
+    def click(make_view, custom_id, *interactions):
+        async def run():
+            view = make_view()  # a View needs the running loop
+            item = next(i for i in view.children if i.custom_id == custom_id)
+            await asyncio.gather(*(item.callback(i) for i in interactions))
+
+        asyncio.run(run())
+
+    def answers(interaction):
+        """Texts sent to the mod after the press (follow-ups and refusals)."""
+        calls = (interaction.followup.send.await_args_list
+                 + interaction.response.send_message.await_args_list)
+        return [c.args[0] for c in calls]
+
+    return types.SimpleNamespace(build=build, click=click, answers=answers)
+

@@ -14,6 +14,7 @@ log = support.get_logger(__name__)
 
 tz_TX = pytz.timezone("US/Central")
 TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
+NO_BAN_REASON = "Ban: No reason Specified"  # what addBan stores without a reason
 
 # Stored in jac.link: without MESSAGE_CONTENT the bot cannot read the invite
 JAC_NO_LINK = "Not available"
@@ -25,6 +26,92 @@ JAC_NO_LINK = "Not available"
 #    print(f"{now} UTC - " + message)
 
 
+UNBAN_ID = "lf:unban"
+UNTIMEOUT_ID = "lf:untimeout"
+
+
+class UnbanView(discord.ui.View):
+    """Persistent Unban button of the ban log embed. State: "User ID" and "Reason" fields."""
+
+    def __init__(self, cog):
+        super().__init__(timeout=None)
+        self.cog = cog
+
+    @discord.ui.button(label="Unban", custom_id=UNBAN_ID, style=discord.ButtonStyle.red)
+    async def unban(self, button, interaction):
+        await support.press(self.cog, interaction, self.act(interaction), log)
+
+    def act(self, interaction):
+        """Unban if the ban of the embed is still the current one."""
+        cog = self.cog
+
+        async def run(message):
+            fields = support.embed_fields(message.embeds[0])
+            user = discord.Object(id=int(fields["User ID"]))
+            reason = fields["Reason"]
+            guild = interaction.guild
+            try:
+                entry = await guild.fetch_ban(user)
+            except discord.NotFound as err:
+                raise support.Refused("The user is not banned any more: nothing done.") from err
+            if (entry.reason or NO_BAN_REASON) != reason:
+                raise support.Refused("A newer ban replaced this one: nothing done.")
+            try:
+                await guild.unban(user)
+            except discord.NotFound as err:
+                raise support.Refused("The user is not banned any more: nothing done.") from err
+
+            embed = discord.Embed(
+                title="User ban - canceled",
+                description=f"User <@{user.id}> was unbanned by {interaction.user}",
+                colour=config.GREEN,
+            )
+            embed.set_author(name=cog.bot.user.name, icon_url=cog.bot.user.display_avatar.url)
+            embed.add_field(name="Ban reason", value=reason, inline=False)
+            embed.add_field(name="Timestamp", value=datetime.now(tz_TX).strftime(TIME_FORMAT))
+            embed.add_field(name="User ID", value=str(user.id))
+            # delBan gets exactly the text addBan stored (the embed's Reason)
+            return support.Closing(
+                embed, "Unbanned.", lambda: cog.database.delBan(str(user.id), reason))
+
+        return run
+
+
+class UntimeoutView(discord.ui.View):
+    """Persistent Undo button of the timeout log embed. State: "User ID", "Timeout until"."""
+
+    def __init__(self, cog):
+        super().__init__(timeout=None)
+        self.cog = cog
+
+    @discord.ui.button(label="Undo", custom_id=UNTIMEOUT_ID, style=discord.ButtonStyle.red)
+    async def untimeout(self, button, interaction):
+        await support.press(self.cog, interaction, self.act(interaction), log)
+
+    def act(self, interaction):
+        """Remove the timeout if it is still the one of the embed."""
+        cog = self.cog
+
+        async def run(message):
+            fields = support.embed_fields(message.embeds[0])
+            user_id = int(fields["User ID"])
+            member = await support.timeout_member(
+                interaction.guild, user_id, fields.get("Timeout until"))
+            await member.remove_timeout(reason="Timeout removed")
+
+            embed = discord.Embed(
+                title="User timeout - removed",
+                description=f"Timeout of <@{user_id}> was removed by {interaction.user}",
+                colour=config.GREEN,
+            )
+            embed.set_author(name=cog.bot.user.name, icon_url=cog.bot.user.display_avatar.url)
+            embed.add_field(name="Timestamp", value=datetime.now(tz_TX).strftime(TIME_FORMAT))
+            embed.add_field(name="User ID", value=str(user_id))
+            return support.Closing(embed, "Timeout removed.")
+
+        return run
+
+
 class Events(commands.Cog):
 
     database = None
@@ -33,6 +120,20 @@ class Events(commands.Cog):
         """Initialize Events cog."""
         self.bot = bot
         self.database = db.Database(self.bot)
+        self.review_locks = {}  # log message ID -> asyncio.Lock, see support.press
+        # Loaded or reloaded (cogwatch) while the bot runs: on_ready does not fire again
+        if bot.is_ready():
+            self.register_views()
+
+    def register_views(self):
+        """Register the persistent buttons: they work after a restart or a reload."""
+        self.bot.add_view(UnbanView(self))
+        self.bot.add_view(UntimeoutView(self))
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Register the persistent buttons after a restart."""
+        self.register_views()
 
 
     # Member join. Without the GUILD_MEMBERS intent there is no on_member_join:
@@ -62,8 +163,9 @@ class Events(commands.Cog):
 
         ban_entry = await guild.fetch_ban(user)
 
-        # Add ban log to DB. delBan below needs the same reason text.
-        reason = ban_entry.reason or "Ban: No reason Specified"
+        # Add ban log to DB. The Unban button needs the same reason text for delBan:
+        # it is stored in the embed.
+        reason = ban_entry.reason or NO_BAN_REASON
         self.database.addBan(str(user.id), str(user), reason)
 
         author = None
@@ -74,9 +176,6 @@ class Events(commands.Cog):
                 author = entry.user
                 break
 
-        # Add 'unban' button under each ban embed
-        unban_button = support.Unban()
-
         # Create embed to log the banning
         embed = discord.Embed(
             title="User Ban",
@@ -84,38 +183,14 @@ class Events(commands.Cog):
             colour=config.RED,
         )
         embed.set_author(name=self.bot.user.name, icon_url=self.bot.user.display_avatar.url)
-        embed.add_field(name="Reason", value=ban_entry.reason, inline=False)
+        embed.add_field(name="Reason", value=reason, inline=False)
         embed.add_field(name="Timestamp", value=dt)
+        embed.add_field(name="User ID", value=str(user.id))
 
         channel = guild.get_channel(config.LOG_CHAN)
 
-        await channel.send(embed=embed, view=unban_button)
-
-        # Wait for button press on embed
-        await unban_button.wait()
-
-        # Respond to button press
-        if unban_button.value:
-
-            await guild.unban(user)
-
-            # Remove ban from db
-            self.database.delBan(str(user.id), reason)
-
-            # Edit ban log embed to reflect
-            new_embed = discord.Embed(
-                title="User ban - canceled",
-                description=f"User {user.name}#{user.discriminator} was unbanned by {unban_button.user}",
-                colour=config.GREEN,
-            )
-            new_embed.set_author(
-                name=self.bot.user.name, icon_url=self.bot.user.display_avatar.url
-            )
-            new_embed.add_field(name="Ban reason", value=ban_entry.reason, inline=False)
-            new_embed.add_field(name="Timestamp", value=now.strftime(TIME_FORMAT))
-            await unban_button.inter.edit_original_message(
-                embed=new_embed, view=None
-            )
+        # The persistent Unban button (UnbanView) does the follow-up
+        await channel.send(embed=embed, view=UnbanView(self))
 
     async def _get_user(self, user_id):
         """Get a user from the cache, or from the API if not cached."""
@@ -187,27 +262,20 @@ class Events(commands.Cog):
         if author is None:
             author = await self._get_user(payload.user_id)
 
-        # Create button to undo timeout
-        undo_button = support.Untimeout()
+        # The persistent Undo button (UntimeoutView) does the follow-up. The end of
+        # the timeout is in the embed: the button must not undo a newer timeout.
+        until = None
+        for change in getattr(payload, "changes", None) or []:
+            if change.get("key") == "communication_disabled_until":
+                until = change.get("new_value")
 
         channel = guild.get_channel(config.LOG_CHAN)
         await channel.send(
             embed=support.timeout_embed(
-                self.bot, user, author, reason or payload.reason
+                self.bot, user, author, reason or payload.reason, until=until
             ),
-            view=undo_button
+            view=UntimeoutView(self),
         )
-
-        # Wait for button press on embed
-        await undo_button.wait()
-
-        # Respond to button press
-        if undo_button.value:
-            try:
-                member = await guild.fetch_member(payload.target_id)
-                await member.remove_timeout(reason="Timeout removed")
-            except discord.NotFound:
-                log.info("User %s left the server, no timeout to remove.", user)
 
     async def log_timeout_removed(self, payload):
         """Log the removal of a timeout."""

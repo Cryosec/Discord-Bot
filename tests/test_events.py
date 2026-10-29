@@ -21,6 +21,7 @@ def _user(uid, name):
 
 def _cog():
     bot = MagicMock()
+    bot.is_ready.return_value = False
     target, author = _user(1, "target"), _user(2, "mod")
     bot.get_user.side_effect = {1: target, 2: author}.get
     channel = MagicMock()
@@ -52,19 +53,18 @@ def test_kick_is_logged_and_stored():
     cog.database.addKick.assert_called_once_with("1", "target", "because")
 
 
-def test_timeout_is_logged_with_undo_button(monkeypatch):
+def test_timeout_is_logged_with_persistent_undo_button():
     cog, channel, _, member = _cog()
-    view = MagicMock()
-    view.wait = AsyncMock()
-    view.value = True
-    monkeypatch.setattr(events.support, "Untimeout", lambda: view)
     changes = [{"key": "communication_disabled_until", "new_value": TS}]
-    asyncio.run(cog.on_raw_audit_log_entry(
-        _payload(discord.AuditLogAction.member_update, changes)))
+    asyncio.run(asyncio.wait_for(cog.on_raw_audit_log_entry(
+        _payload(discord.AuditLogAction.member_update, changes)), 1))  # returns: no wait()
     kwargs = channel.send.await_args.kwargs
+    fields = {f.name: f.value for f in kwargs["embed"].fields}
     assert kwargs["embed"].title == "User timeout issued"
-    assert kwargs["view"] is view
-    member.remove_timeout.assert_awaited_once()
+    assert isinstance(kwargs["view"], events.UntimeoutView)
+    assert fields["User ID"] == "1"
+    assert fields["Timeout until"] == TS
+    member.remove_timeout.assert_not_awaited()  # only the button does it
 
 
 def test_timeout_removed_is_logged():
@@ -109,17 +109,18 @@ def _raw_entry(action_type, options=None, user_id="2"):
 
 def test_automod_timeout_is_logged(monkeypatch):
     cog, channel, _, _ = _cog()
-    view = MagicMock()
-    view.wait = AsyncMock()
-    view.value = False
-    monkeypatch.setattr(events.support, "Untimeout", lambda: view)
     options = {"auto_moderation_rule_name": "LF scam", "auto_moderation_rule_trigger_type": "1",
                "channel_id": "7"}
     asyncio.run(cog.on_raw_audit_log_entry(_raw_entry(145, options)))
     embed = channel.send.await_args.kwargs["embed"]
     assert embed.title == "User timeout issued"
     assert "AutoMod" in embed.description
-    assert {f.name: f.value for f in embed.fields}["Reason"] == "AutoMod rule: LF scam"
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["Reason"] == "AutoMod rule: LF scam"
+    # No audit changes for the AutoMod TIMEOUT action: no end in the embed
+    assert fields["User ID"] == "1"
+    assert "Timeout until" not in fields
+    assert isinstance(channel.send.await_args.kwargs["view"], events.UntimeoutView)
 
 
 def test_real_kick_payload_is_handled():
@@ -237,28 +238,27 @@ def _ban_setup(monkeypatch, reason, entries):
     guild.fetch_ban = AsyncMock(return_value=MagicMock(reason=reason))
     guild.audit_logs = _audit_entries(*entries)
     guild.unban = AsyncMock()
-    view = MagicMock()
-    view.wait = AsyncMock()
-    view.value = True
-    view.inter.edit_original_message = AsyncMock()
-    monkeypatch.setattr(events.support, "Unban", lambda: view)
-    asyncio.run(cog.on_member_ban(guild, target))
-    return cog, channel
+    asyncio.run(asyncio.wait_for(cog.on_member_ban(guild, target), 1))  # returns: no wait()
+    return cog, channel, guild
 
 
-def test_unban_button_removes_the_stored_ban_reason(monkeypatch):
-    """delBan must get the text that addBan stored, also without a ban reason."""
-    cog, _ = _ban_setup(monkeypatch, None, [])
+def test_ban_embed_shows_the_stored_reason_and_the_user_id(monkeypatch):
+    """Without a reason the embed shows the text addBan stored, not None."""
+    cog, channel, _ = _ban_setup(monkeypatch, None, [])
     stored = cog.database.addBan.call_args.args[2]
     assert stored == "Ban: No reason Specified"
-    cog.database.delBan.assert_called_once_with("1", stored)
+    kwargs = channel.send.await_args.kwargs
+    fields = {f.name: f.value for f in kwargs["embed"].fields}
+    assert fields["Reason"] == stored
+    assert fields["User ID"] == "1"
+    assert isinstance(kwargs["view"], events.UnbanView)
 
 
 def test_ban_author_is_found_among_recent_entries(monkeypatch):
     """Another ban can be the newest audit log entry."""
     other = MagicMock(target=MagicMock(id=9), user="someone else")
     ours = MagicMock(target=MagicMock(id=1), user="mod")
-    _, channel = _ban_setup(monkeypatch, "spam", [other, ours])
+    _, channel, _ = _ban_setup(monkeypatch, "spam", [other, ours])
     assert channel.send.await_args.kwargs["embed"].description.endswith("by mod.")
 
 
@@ -279,10 +279,6 @@ def test_bot_review_timeout_is_not_logged_twice(monkeypatch):
 
 def test_bot_timeout_command_keeps_its_embed(monkeypatch):
     cog, channel, _, _ = _cog()
-    view = MagicMock()
-    view.wait = AsyncMock()
-    view.value = False
-    monkeypatch.setattr(events.support, "Untimeout", lambda: view)
     asyncio.run(cog.on_raw_audit_log_entry(_bot_timeout(cog, "spamming")))
     asyncio.run(cog.on_raw_audit_log_entry(_bot_timeout(cog, None)))
     assert channel.send.await_count == 2
@@ -291,12 +287,258 @@ def test_bot_timeout_command_keeps_its_embed(monkeypatch):
 def test_mod_timeout_with_a_review_reason_keeps_its_embed(monkeypatch):
     cog, channel, _, _ = _cog()
     cog.bot.user.id = 999  # the author (id 2) is a mod, not the bot
-    view = MagicMock()
-    view.wait = AsyncMock()
-    view.value = False
-    monkeypatch.setattr(events.support, "Untimeout", lambda: view)
     changes = [{"key": "communication_disabled_until", "new_value": TS}]
     asyncio.run(cog.on_raw_audit_log_entry(_payload(
         discord.AuditLogAction.member_update, changes,
         reason=events.support.AUTOMOD_REVIEW_REASON)))
     channel.send.assert_awaited_once()
+
+
+# --- Persistent buttons -------------------------------------------------------
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+def _http_error(cls, text="x"):
+    return cls(MagicMock(status=400), text)
+
+
+def _ban_embed(reason="spam", user_id=1):
+    embed = discord.Embed(title="User Ban", description="banned")
+    embed.add_field(name="Reason", value=reason, inline=False)
+    embed.add_field(name="User ID", value=str(user_id))
+    return embed
+
+
+def _timeout_embed(until=None, user_id=1):
+    embed = discord.Embed(title="User timeout issued", description="timed out")
+    embed.add_field(name="User ID", value=str(user_id))
+    if until is not None:
+        embed.add_field(name="Timeout until", value=until)
+    return embed
+
+
+def _ban_env(make_press, ban_reason="spam", embed_reason="spam"):
+    cog, _, guild, _ = _cog()
+    guild.fetch_ban = AsyncMock(return_value=MagicMock(reason=ban_reason))
+
+    async def unban(*args, **kwargs):
+        await asyncio.sleep(0)  # yield, so concurrent presses really interleave
+
+    guild.unban = AsyncMock(side_effect=unban)
+    press = make_press.build(guild, _ban_embed(embed_reason))
+    return cog, guild, press
+
+
+def test_views_are_persistent_with_fixed_custom_ids():
+    async def run():
+        cog, _, _, _ = _cog()
+        unban, undo = events.UnbanView(cog), events.UntimeoutView(cog)
+        assert unban.is_persistent() and undo.is_persistent()
+        assert [i.custom_id for i in unban.children] == ["lf:unban"]
+        assert [i.custom_id for i in undo.children] == ["lf:untimeout"]
+    asyncio.run(run())
+
+
+def test_views_are_registered_on_ready_and_on_load_when_ready():
+    async def run():
+        cog, _, _, _ = _cog()
+        cog.bot.add_view.assert_not_called()
+        await cog.on_ready()
+        assert {type(c.args[0]) for c in cog.bot.add_view.call_args_list} == {
+            events.UnbanView, events.UntimeoutView}
+        assert all(len(c.args) == 1 for c in cog.bot.add_view.call_args_list)  # no message_id
+        late = MagicMock()
+        late.is_ready.return_value = True  # cogwatch reload while the bot runs
+        events.Events(late)
+        assert late.add_view.call_count == 2
+    asyncio.run(run())
+
+
+def test_unban_button_unbans_edits_and_removes_the_db_ban(make_press):
+    cog, guild, press = _ban_env(make_press)
+    make_press.click(lambda: events.UnbanView(cog), "lf:unban", press.interaction)
+    assert guild.unban.await_args.args[0].id == 1
+    cog.database.delBan.assert_called_once_with("1", "spam")
+    kwargs = press.message.edit.await_args.kwargs
+    assert kwargs["view"] is None
+    assert kwargs["embed"].title == "User ban - canceled"
+    assert "mod#1" in kwargs["embed"].description
+    press.interaction.response.defer.assert_awaited_once()
+    assert make_press.answers(press.interaction) == ["Unbanned."]
+    assert press.message.id not in cog.review_locks  # lock dropped
+
+
+def test_unban_without_a_reason_gives_delban_the_stored_text(make_press):
+    cog, guild, press = _ban_env(make_press, ban_reason=None,
+                                 embed_reason="Ban: No reason Specified")
+    make_press.click(lambda: events.UnbanView(cog), "lf:unban", press.interaction)
+    cog.database.delBan.assert_called_once_with("1", "Ban: No reason Specified")
+
+
+def test_non_mod_cannot_press_unban(make_press):
+    cog, guild, press = _ban_env(make_press)
+    other = make_press.build(guild, _ban_embed(), mod=False)
+    make_press.click(lambda: events.UnbanView(cog), "lf:unban", other.interaction)
+    guild.unban.assert_not_awaited()
+    cog.database.delBan.assert_not_called()
+    other.interaction.response.defer.assert_not_awaited()
+    assert "moderators" in make_press.answers(other.interaction)[0]
+    assert other.interaction.response.send_message.await_args.kwargs["ephemeral"] is True
+
+
+def test_unban_pressed_twice_acts_once(make_press):
+    cog, guild, press = _ban_env(make_press)
+    second = make_press.build(guild, _ban_embed())
+    second.interaction.channel.fetch_message = press.interaction.channel.fetch_message
+    make_press.click(lambda: events.UnbanView(cog), "lf:unban", press.interaction, second.interaction)
+    guild.unban.assert_awaited_once()
+    cog.database.delBan.assert_called_once()
+    assert make_press.answers(second.interaction) == ["This review was already handled."]
+
+
+def test_old_unban_after_a_newer_ban_with_another_reason_does_nothing(make_press):
+    cog, guild, press = _ban_env(make_press, ban_reason="newer ban", embed_reason="old ban")
+    make_press.click(lambda: events.UnbanView(cog), "lf:unban", press.interaction)
+    guild.unban.assert_not_awaited()
+    cog.database.delBan.assert_not_called()
+    press.message.edit.assert_not_awaited()
+    assert "newer ban" in make_press.answers(press.interaction)[0]
+
+
+def test_unban_when_not_banned_any_more_changes_nothing(make_press):
+    cog, guild, press = _ban_env(make_press)
+    guild.fetch_ban.side_effect = _http_error(discord.NotFound)
+    make_press.click(lambda: events.UnbanView(cog), "lf:unban", press.interaction)
+    guild.unban.assert_not_awaited()
+    cog.database.delBan.assert_not_called()
+    assert "not banned" in make_press.answers(press.interaction)[0]
+
+
+def test_unban_notfound_from_the_unban_call_changes_nothing(make_press):
+    cog, guild, press = _ban_env(make_press)
+    guild.unban.side_effect = _http_error(discord.NotFound)
+    make_press.click(lambda: events.UnbanView(cog), "lf:unban", press.interaction)
+    cog.database.delBan.assert_not_called()
+    press.message.edit.assert_not_awaited()
+
+
+def test_failed_unban_keeps_the_buttons(make_press):
+    cog, guild, press = _ban_env(make_press)
+    guild.unban.side_effect = _http_error(discord.Forbidden, "missing perms")
+    make_press.click(lambda: events.UnbanView(cog), "lf:unban", press.interaction)
+    cog.database.delBan.assert_not_called()
+    press.message.edit.assert_not_awaited()
+    assert press.message.components  # still open
+    assert "missing perms" in make_press.answers(press.interaction)[0]
+
+
+def test_db_error_after_unban_closes_the_message_and_tells_the_mod(make_press):
+    cog, guild, press = _ban_env(make_press)
+    cog.database.delBan.side_effect = RuntimeError("db down")
+    second = make_press.build(guild, _ban_embed())
+    second.interaction.channel.fetch_message = press.interaction.channel.fetch_message
+    make_view = lambda: events.UnbanView(cog)  # noqa: E731
+    make_press.click(make_view, "lf:unban", press.interaction)
+    assert press.message.edit.await_args.kwargs["view"] is None
+    assert "dashboard" in make_press.answers(press.interaction)[0]
+    make_press.click(make_view, "lf:unban", second.interaction)  # no second delBan
+    cog.database.delBan.assert_called_once()
+    guild.unban.assert_awaited_once()
+
+
+def test_edit_error_after_unban_is_told_and_the_db_is_still_updated(make_press):
+    cog, guild, press = _ban_env(make_press)
+    press.message.edit.side_effect = _http_error(discord.HTTPException)
+    make_view = lambda: events.UnbanView(cog)  # noqa: E731
+    make_press.click(make_view, "lf:unban", press.interaction)
+    cog.database.delBan.assert_called_once_with("1", "spam")
+    assert "could not be updated" in make_press.answers(press.interaction)[0]
+    # The message is still open: the next press sees the state through fetch_ban
+    guild.fetch_ban.side_effect = _http_error(discord.NotFound)
+    again = make_press.build(guild, _ban_embed())
+    make_press.click(make_view, "lf:unban", again.interaction)
+    cog.database.delBan.assert_called_once()
+
+
+def _undo_env(make_press, until, current):
+    cog, _, guild, member = _cog()
+    member.communication_disabled_until = current
+    press = make_press.build(guild, _timeout_embed(until))
+    return cog, guild, member, press
+
+
+FUTURE = datetime.now(timezone.utc) + timedelta(days=1)
+
+
+def test_undo_button_removes_the_timeout_and_closes_the_message(make_press):
+    cog, guild, member, press = _undo_env(make_press, FUTURE.isoformat(), FUTURE)
+    make_press.click(lambda: events.UntimeoutView(cog), "lf:untimeout", press.interaction)
+    guild.fetch_member.assert_awaited_once_with(1)
+    member.remove_timeout.assert_awaited_once_with(reason="Timeout removed")
+    kwargs = press.message.edit.await_args.kwargs
+    assert kwargs["view"] is None
+    assert kwargs["embed"].title == "User timeout - removed"
+
+
+def test_undo_compares_datetimes_not_strings(make_press):
+    """The audit value can end with Z or use another offset: same instant, same timeout."""
+    until = FUTURE.replace(microsecond=0)
+    text = until.astimezone(timezone(timedelta(hours=2))).isoformat()
+    cog, _, member, press = _undo_env(make_press, text, until)
+    make_press.click(lambda: events.UntimeoutView(cog), "lf:untimeout", press.interaction)
+    member.remove_timeout.assert_awaited_once()
+    z = until.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
+    cog, _, member, press = _undo_env(make_press, z, until)
+    make_press.click(lambda: events.UntimeoutView(cog), "lf:untimeout", press.interaction)
+    member.remove_timeout.assert_awaited_once()
+
+
+def test_old_undo_after_a_newer_timeout_does_nothing(make_press):
+    cog, _, member, press = _undo_env(
+        make_press, FUTURE.isoformat(), FUTURE + timedelta(days=6))
+    make_press.click(lambda: events.UntimeoutView(cog), "lf:untimeout", press.interaction)
+    member.remove_timeout.assert_not_awaited()
+    press.message.edit.assert_not_awaited()
+    assert "already changed" in make_press.answers(press.interaction)[0]
+
+
+def test_undo_when_the_timeout_is_gone_does_nothing(make_press):
+    cog, _, member, press = _undo_env(make_press, FUTURE.isoformat(), None)
+    make_press.click(lambda: events.UntimeoutView(cog), "lf:untimeout", press.interaction)
+    member.remove_timeout.assert_not_awaited()
+
+
+def test_undo_when_the_user_left(make_press):
+    cog, guild, member, press = _undo_env(make_press, FUTURE.isoformat(), FUTURE)
+    guild.fetch_member.side_effect = _http_error(discord.NotFound)
+    make_press.click(lambda: events.UntimeoutView(cog), "lf:untimeout", press.interaction)
+    member.remove_timeout.assert_not_awaited()
+    assert "left" in make_press.answers(press.interaction)[0]
+
+
+def test_undo_without_an_end_only_checks_that_the_member_is_timed_out(make_press):
+    """AutoMod TIMEOUT action: the audit entry has no changes, so no end in the embed."""
+    cog, _, member, press = _undo_env(make_press, None, FUTURE)
+    make_press.click(lambda: events.UntimeoutView(cog), "lf:untimeout", press.interaction)
+    member.remove_timeout.assert_awaited_once()
+    cog, _, member, press = _undo_env(make_press, None, None)
+    make_press.click(lambda: events.UntimeoutView(cog), "lf:untimeout", press.interaction)
+    member.remove_timeout.assert_not_awaited()
+
+
+def test_non_mod_cannot_press_undo(make_press):
+    cog, guild, member, _ = _undo_env(make_press, None, FUTURE)
+    other = make_press.build(guild, _timeout_embed(), mod=False)
+    make_press.click(lambda: events.UntimeoutView(cog), "lf:untimeout", other.interaction)
+    member.remove_timeout.assert_not_awaited()
+
+
+def test_failed_remove_timeout_keeps_the_buttons(make_press):
+    cog, _, member, press = _undo_env(make_press, None, FUTURE)
+    member.remove_timeout.side_effect = _http_error(discord.Forbidden, "no")
+    make_press.click(lambda: events.UntimeoutView(cog), "lf:untimeout", press.interaction)
+    press.message.edit.assert_not_awaited()
+    assert press.message.components

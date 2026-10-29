@@ -1,5 +1,6 @@
 """Tests for cogs/automod.py, with real py-cord AutoModActionExecutionEvent payloads."""
 import asyncio
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -74,6 +75,7 @@ def env(monkeypatch):
     user.id = USER
     user.name = "spammer"
     bot = MagicMock()
+    bot.is_ready.return_value = False
     bot.get_guild.return_value = guild
     bot.get_user.return_value = user
 
@@ -83,17 +85,12 @@ def env(monkeypatch):
 
     cog = automod.AutoMod(bot)
     cog.database = MagicMock()
-    view = MagicMock()
-    view.wait = AsyncMock()
-    view.value = False
-    view.inter.message.edit = AsyncMock()
-    monkeypatch.setattr(automod.support, "Scam", lambda *_: view)
 
     def fire(*args, **kwargs):
         asyncio.run(cog.on_auto_moderation_action_execution(_event(*args, state=state, **kwargs)))
 
     return MagicMock(cog=cog, guild=guild, member=member, log_chan=log_chan,
-                     where=where, partial=partial, view=view, fire=fire)
+                     where=where, partial=partial, fire=fire)
 
 
 def _embed(chan):
@@ -119,29 +116,12 @@ def test_scam_times_out_and_posts_review_without_content(env):
     assert fields["Matched keyword"] == "`*free nitro*`"
     assert fields["Rule"] == ar.SCAM
     assert fields["AutoMod alert"].endswith(f"/{GUILD}/{ALERT_CHAN}/{ALERT_MSG}")
-    assert env.log_chan.send.await_args.kwargs["view"] is env.view
-
-
-def test_scam_review_ban_confirmed(env):
-    env.view.value = True
-    env.fire(ar.SCAM)
-    env.guild.ban.assert_awaited_once()
-    assert env.guild.ban.await_args.kwargs["delete_message_seconds"] == 43200
-    env.member.remove_timeout.assert_not_awaited()
-
-
-def test_scam_review_cancelled_removes_timeout(env):
-    env.fire(ar.SCAM)
-    env.member.remove_timeout.assert_awaited_once()
-    env.guild.ban.assert_not_awaited()
-    assert env.view.inter.message.edit.await_args.kwargs["view"] is None
-
-
-def test_scam_review_when_user_already_left(env):
-    env.guild.fetch_member.side_effect = discord.NotFound(MagicMock(status=404), "gone")
-    env.view.value = True
-    env.fire(ar.SCAM)
-    env.guild.ban.assert_awaited_once()
+    assert isinstance(env.log_chan.send.await_args.kwargs["view"], automod.ScamReviewView)
+    # State for the persistent buttons: the user and the end of the review timeout
+    assert fields["User ID"] == str(USER)
+    until = automod.support.parse_until(fields["Timeout until"])
+    planned = discord.utils.utcnow() + timedelta(days=1)
+    assert abs((until - planned).total_seconds()) < 5
 
 
 def test_blacklist_warns_in_channel_and_db(env):
@@ -186,6 +166,8 @@ def test_failed_review_timeout_still_posts_the_review(env):
     env.member.timeout_for.side_effect = discord.Forbidden(MagicMock(status=403), "no")
     env.fire(ar.SCAM)
     assert _embed(env.log_chan).title == "Possible scam - manual review"
+    # No timeout was applied: no end in the embed
+    assert "Timeout until" not in [f.name for f in _embed(env.log_chan).fields]
 
 
 def test_uncached_guild_is_ignored(env):
@@ -240,3 +222,144 @@ def test_only_an_explicit_false_turns_dry_run_off(monkeypatch):
     assert automod.dry_run() is True
     monkeypatch.setattr(automod.config, "AUTOMOD_DRY_RUN", False, raising=False)
     assert automod.dry_run() is False
+
+
+# --- Persistent Ban/Cancel buttons -------------------------------------------
+
+def _review(env, make_press, mod=True):
+    """Fire a scam review and build the press on the posted embed."""
+    env.fire(ar.SCAM)
+    embed = _embed(env.log_chan)
+    until = {f.name: f.value for f in embed.fields}["Timeout until"]
+    env.member.communication_disabled_until = automod.support.parse_until(until)
+    return make_press.build(env.guild, embed, mod=mod)
+
+
+def _view(env):
+    return lambda: automod.ScamReviewView(env.cog)
+
+
+def _http(cls):
+    return cls(MagicMock(status=400), "x")
+
+
+def test_scam_view_is_persistent_with_fixed_custom_ids():
+    async def run():
+        bot = MagicMock()
+        bot.is_ready.return_value = False
+        cog = automod.AutoMod(bot)
+        view = automod.ScamReviewView(cog)
+        assert view.is_persistent()
+        assert [i.custom_id for i in view.children] == ["lf:scam:ban", "lf:scam:cancel"]
+        await cog.on_ready()
+        assert isinstance(bot.add_view.call_args.args[0], automod.ScamReviewView)
+        assert len(bot.add_view.call_args.args) == 1  # no message_id
+        late = MagicMock()
+        late.is_ready.return_value = True  # cogwatch reload while the bot runs
+        automod.AutoMod(late)
+        late.add_view.assert_called_once()
+    asyncio.run(run())
+
+
+def test_scam_ban_button_bans_and_closes_the_review(env, make_press):
+    press = _review(env, make_press)
+    make_press.click(_view(env), "lf:scam:ban", press.interaction)
+    env.guild.ban.assert_awaited_once()
+    assert env.guild.ban.await_args.args[0].id == USER
+    assert env.guild.ban.await_args.kwargs["delete_message_seconds"] == 43200
+    assert env.guild.ban.await_args.kwargs["reason"] == "Spam message confirmed by mod#1"
+    env.member.remove_timeout.assert_not_awaited()
+    kwargs = press.message.edit.await_args.kwargs
+    assert kwargs["view"] is None
+    assert kwargs["embed"].title == "Possible scam - manual review completed"
+    assert "mod#1" in kwargs["embed"].description
+
+
+def test_scam_ban_is_skipped_for_a_moderator(env, make_press):
+    press = _review(env, make_press)
+    modrole = MagicMock()
+    env.guild.get_role.return_value = modrole
+    env.member.roles = [modrole]
+    make_press.click(_view(env), "lf:scam:ban", press.interaction)
+    env.guild.ban.assert_not_awaited()
+    assert press.message.edit.await_args.kwargs["view"] is None
+
+
+def test_scam_ban_works_when_the_user_already_left(env, make_press):
+    press = _review(env, make_press)
+    env.guild.fetch_member.side_effect = discord.NotFound(MagicMock(status=404), "gone")
+    make_press.click(_view(env), "lf:scam:ban", press.interaction)
+    env.guild.ban.assert_awaited_once()
+
+
+def test_scam_ban_of_an_unknown_user_is_a_failure_not_a_ban(env, make_press):
+    press = _review(env, make_press)
+    env.guild.ban.side_effect = _http(discord.NotFound)
+    make_press.click(_view(env), "lf:scam:ban", press.interaction)
+    press.message.edit.assert_not_awaited()
+    assert press.message.components  # buttons stay
+    assert "not banned" in make_press.answers(press.interaction)[0]
+
+
+def test_failed_scam_ban_keeps_the_buttons(env, make_press):
+    press = _review(env, make_press)
+    env.guild.ban.side_effect = _http(discord.Forbidden)
+    make_press.click(_view(env), "lf:scam:ban", press.interaction)
+    press.message.edit.assert_not_awaited()
+
+
+def test_scam_cancel_removes_the_timeout_and_closes_the_review(env, make_press):
+    press = _review(env, make_press)
+    make_press.click(_view(env), "lf:scam:cancel", press.interaction)
+    env.member.remove_timeout.assert_awaited_once_with(
+        reason="Spam review completed. Timeout removed")
+    env.guild.ban.assert_not_awaited()
+    kwargs = press.message.edit.await_args.kwargs
+    assert kwargs["view"] is None
+    assert kwargs["embed"].title == "Possible scam - manual review completed"
+
+
+def test_old_scam_cancel_after_a_newer_timeout_does_nothing(env, make_press):
+    press = _review(env, make_press)
+    env.member.communication_disabled_until += timedelta(days=6)
+    make_press.click(_view(env), "lf:scam:cancel", press.interaction)
+    env.member.remove_timeout.assert_not_awaited()
+    press.message.edit.assert_not_awaited()
+    assert "already changed" in make_press.answers(press.interaction)[0]
+
+
+def test_scam_cancel_when_the_user_left(env, make_press):
+    press = _review(env, make_press)
+    env.guild.fetch_member.side_effect = discord.NotFound(MagicMock(status=404), "gone")
+    make_press.click(_view(env), "lf:scam:cancel", press.interaction)
+    env.member.remove_timeout.assert_not_awaited()
+    assert "left" in make_press.answers(press.interaction)[0]
+
+
+def test_scam_ban_and_cancel_together_act_once(env, make_press):
+    press = _review(env, make_press)
+    other = make_press.build(env.guild, press.message.embeds[0])
+    other.interaction.channel.fetch_message = press.interaction.channel.fetch_message
+    async def run():
+        view = automod.ScamReviewView(env.cog)
+        ban, cancel = view.children
+        await asyncio.gather(ban.callback(press.interaction), cancel.callback(other.interaction))
+    asyncio.run(run())
+    env.guild.ban.assert_awaited_once()
+    env.member.remove_timeout.assert_not_awaited()
+    assert make_press.answers(other.interaction) == ["This review was already handled."]
+
+
+def test_non_mod_cannot_press_scam_buttons(env, make_press):
+    press = _review(env, make_press, mod=False)
+    make_press.click(_view(env), "lf:scam:ban", press.interaction)
+    make_press.click(_view(env), "lf:scam:cancel", press.interaction)
+    env.guild.ban.assert_not_awaited()
+    env.member.remove_timeout.assert_not_awaited()
+    press.message.edit.assert_not_awaited()
+
+
+def test_scam_review_returns_without_waiting_for_a_press(env):
+    """fire() runs the handler to the end: it would hang if the handler waited for a button."""
+    env.fire(ar.SCAM)
+    assert env.log_chan.send.await_count == 1

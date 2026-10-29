@@ -5,6 +5,7 @@
 The channel is a trap for spam bots. Every user who posts in it is banned,
 with the exception of moderators and administrators. Moderators can cancel
 the ban with the 'Unban' button of the log embed that on_member_ban creates.
+The manual review (non-autoban mode) has persistent Ban/Release buttons.
 """
 from datetime import timedelta
 import discord
@@ -20,29 +21,68 @@ log = support.get_logger(__name__)
 TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
 
 
-# Define a view for the manual review of a honeypot hit
-class HoneypotReview(discord.ui.View):
-    def __init__(self):
+HONEYPOT_BAN_ID = "lf:honeypot:ban"
+HONEYPOT_RELEASE_ID = "lf:honeypot:release"
+
+
+class HoneypotReviewView(discord.ui.View):
+    """Persistent Ban/Release buttons of the honeypot review. State: "User ID", "Timeout until"."""
+
+    def __init__(self, cog):
         super().__init__(timeout=None)
-        self.value = None
-        self.user = None
-        self.inter = None
+        self.cog = cog
 
-    @discord.ui.button(label="Ban", style=discord.ButtonStyle.red)
-    async def ban(self, button: discord.ui.Button, interaction: discord.Interaction):
-        await interaction.response.send_message("Banning", ephemeral=True)
-        self.value = True
-        self.user = interaction.user
-        self.inter = interaction
-        self.stop()
+    @discord.ui.button(label="Ban", custom_id=HONEYPOT_BAN_ID, style=discord.ButtonStyle.red)
+    async def ban(self, button, interaction):
+        await support.press(self.cog, interaction, self.act_ban(interaction), log)
 
-    @discord.ui.button(label="Release", style=discord.ButtonStyle.grey)
-    async def release(self, button: discord.ui.Button, interaction: discord.Interaction):
-        await interaction.response.send_message("Releasing", ephemeral=True)
-        self.value = False
-        self.user = interaction.user
-        self.inter = interaction
-        self.stop()
+    @discord.ui.button(label="Release", custom_id=HONEYPOT_RELEASE_ID,
+                       style=discord.ButtonStyle.grey)
+    async def release(self, button, interaction):
+        await support.press(self.cog, interaction, self.act_release(interaction), log)
+
+    @staticmethod
+    def done_embed(message, interaction, result):
+        """The completed embed: the Author field of the review and the result."""
+        embed = discord.Embed(
+            title="Honeypot hit - manual review completed",
+            description=f"Review of the honeypot hit was done by {interaction.user}",
+            colour=config.GREEN,
+        )
+        author = support.embed_fields(message.embeds[0]).get("Author")
+        if author is not None:
+            embed.add_field(name="Author", value=author)
+        embed.add_field(name="Result", value=result)
+        return embed
+
+    def act_ban(self, interaction):
+        """Ban without a relevance check (a mod decision)."""
+        async def run(message):
+            user_id = int(support.embed_fields(message.embeds[0])["User ID"])
+            log.info("Honeypot hit confirmed by %s", interaction.user)
+            try:
+                await interaction.guild.ban(
+                    discord.Object(id=user_id),
+                    reason=f"Honeypot hit confirmed by {interaction.user}",
+                    delete_message_seconds=config.HONEYPOT_DELETE_SECONDS,
+                )
+            except discord.NotFound as err:
+                # Unknown user: the ban did not happen, never mark it done
+                raise support.Refused("Discord does not know this user: not banned.") from err
+            return support.Closing(self.done_embed(message, interaction, "Banned"), "Banned.")
+        return run
+
+    def act_release(self, interaction):
+        """Remove the review timeout, if it is still the one of the embed."""
+        async def run(message):
+            fields = support.embed_fields(message.embeds[0])
+            member = await support.timeout_member(
+                interaction.guild, int(fields["User ID"]), fields.get("Timeout until"))
+            log.info("Honeypot hit negated by %s", interaction.user)
+            await member.remove_timeout(reason="Honeypot review completed. Timeout removed")
+            return support.Closing(
+                self.done_embed(message, interaction, "Released"), "Released.")
+        return run
 
 
 class Honeypot(commands.Cog):
@@ -55,6 +95,15 @@ class Honeypot(commands.Cog):
         self.database = db.Database(self.bot)
         # User IDs of the members that are under punishment, to avoid double bans
         self.processing = set()
+        self.review_locks = {}  # review message ID -> asyncio.Lock, see support.press
+        # Loaded or reloaded (cogwatch) while the bot runs: on_ready does not fire again
+        if bot.is_ready():
+            bot.add_view(HoneypotReviewView(self))
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Register the persistent buttons after a restart."""
+        self.bot.add_view(HoneypotReviewView(self))
 
 
     @commands.Cog.listener()
@@ -137,6 +186,7 @@ async def check_honeypot(self, message):
 
     self.processing.add(message.author.id)
     purged = None
+    until = None
     review = False
 
     try:
@@ -157,6 +207,10 @@ async def check_honeypot(self, message):
                 delete_message_seconds=config.HONEYPOT_DELETE_SECONDS,
             )
         else:
+            # The end goes in the review embed (the Release button checks it). It is
+            # computed just before timeout_for computes its own: the Release check
+            # allows support.TIMEOUT_TOLERANCE seconds of difference.
+            until = discord.utils.utcnow() + timedelta(days=1)
             await message.author.timeout_for(
                 duration=timedelta(days=1), reason=config.HONEYPOT_REASON
             )
@@ -175,14 +229,14 @@ async def check_honeypot(self, message):
     except Exception as err:
         log.error("Honeypot error on user %s: %s", message.author.id, err)
     finally:
-        # Free the guard here. The manual review below waits for a button press
-        # and can stay open for hours, the guard must not last that long.
+        # Free the guard here: the review below only posts the embed, but the
+        # guard must not cover the log channel call.
         self.processing.discard(message.author.id)
 
     # The punishment is complete. The review runs outside of the guard.
     if review:
         try:
-            await honeypot_review_embed(self, message, purged)
+            await honeypot_review_embed(self, message, purged, until)
         except Exception as err:
             log.error("Honeypot review failed for user %s: %s", message.author.id, err)
 
@@ -251,20 +305,19 @@ async def purge_user_messages(guild, member):
     return result
 
 
-async def honeypot_review_embed(self, message, purged=None):
+async def honeypot_review_embed(self, message, purged=None, until=None):
     """Generate an embed with buttons for the manual review of a honeypot hit.
 
     Keyword arguments:
     self    -- self reference of the bot
     message -- message that triggered the honeypot
     purged  -- dictionary of the channels cleaned by purge_user_messages
+    until   -- datetime end of the review timeout (stored in the embed)
 
     Used only when config.HONEYPOT_AUTOBAN is False. The author is muted for
     24 hours and a moderator decides between the ban and the release. The embed
     has no message content: the bot cannot read it (no MESSAGE_CONTENT intent).
     """
-    ban_button = HoneypotReview()
-
     embed = discord.Embed(
         title="Honeypot hit - manual review",
         description="The user posted in the honeypot channel and is muted for 24 hours.",
@@ -288,43 +341,14 @@ async def honeypot_review_embed(self, message, purged=None):
             name="Deleted messages", value=cleaned[:1024], inline=False
         )
 
+    # State for the persistent buttons (the view keeps nothing in memory)
+    embed.add_field(name="User ID", value=str(message.author.id))
+    if until is not None:
+        embed.add_field(name="Timeout until", value=until.isoformat())
+
     embed.set_footer(text=config.FOOTER)
 
     channel = message.guild.get_channel(config.LOG_CHAN)
 
-    review = await channel.send(embed=embed, view=ban_button)
-
-    # Wait for a mod to press a button
-    await ban_button.wait()
-
-    new_embed = discord.Embed(
-        title="Honeypot hit - manual review completed",
-        description=f"Review of the honeypot hit was done by {ban_button.user}",
-        colour=config.GREEN,
-    )
-    new_embed.add_field(name="Author", value=message.author.mention)
-
-    # If mod confirms ban
-    if ban_button.value:
-        log.info("Honeypot hit confirmed by %s", ban_button.user)
-        new_embed.add_field(name="Result", value="Banned")
-        try:
-            await message.author.ban(
-                reason=f"Honeypot hit confirmed by {ban_button.user}",
-                delete_message_seconds=config.HONEYPOT_DELETE_SECONDS,
-            )
-        except Exception as err:
-            log.error("Unable to ban honeypot user %s: %s", message.author.id, err)
-
-    # If mod releases the user
-    else:
-        log.info("Honeypot hit negated by %s", ban_button.user)
-        new_embed.add_field(name="Result", value="Released")
-        try:
-            await message.author.remove_timeout(
-                reason="Honeypot review completed. Timeout removed"
-            )
-        except Exception as err:
-            log.error("Unable to remove timeout of %s: %s", message.author.id, err)
-
-    await review.edit(embed=new_embed, view=None)
+    # The persistent buttons (HoneypotReviewView) do the follow-up
+    await channel.send(embed=embed, view=HoneypotReviewView(self))

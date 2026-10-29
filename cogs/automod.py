@@ -45,6 +45,69 @@ def alert_link(payload) -> str:
             f"{payload.action.metadata.channel_id}/{payload.alert_system_message_id}")
 
 
+SCAM_BAN_ID = "lf:scam:ban"
+SCAM_CANCEL_ID = "lf:scam:cancel"
+
+
+class ScamReviewView(discord.ui.View):
+    """Persistent Ban/Cancel buttons of the scam review. State: "User ID", "Timeout until"."""
+
+    def __init__(self, cog):
+        super().__init__(timeout=None)
+        self.cog = cog
+
+    @discord.ui.button(label="Ban", custom_id=SCAM_BAN_ID, style=discord.ButtonStyle.red)
+    async def ban(self, button, interaction):
+        await support.press(self.cog, interaction, self.act_ban(interaction), log)
+
+    @discord.ui.button(label="Cancel", custom_id=SCAM_CANCEL_ID, style=discord.ButtonStyle.grey)
+    async def cancel(self, button, interaction):
+        await support.press(self.cog, interaction, self.act_cancel(interaction), log)
+
+    @staticmethod
+    def done_embed(message, interaction):
+        """The review embed with the 'completed' title: the fields stay."""
+        embed = message.embeds[0].copy()
+        embed.title = "Possible scam - manual review completed"
+        embed.description = f"Review of the blocked message was done by {interaction.user}"
+        embed.colour = config.GREEN
+        return embed
+
+    def act_ban(self, interaction):
+        """Ban without a relevance check (a mod decision), except for moderators."""
+        async def run(message):
+            guild = interaction.guild
+            user_id = int(support.embed_fields(message.embeds[0])["User ID"])
+            log.info("Spam confirmed by %s", interaction.user)
+            member = await self.cog.fetch_member(guild, user_id)
+            modrole = guild.get_role(config.MOD_ID)
+            embed = self.done_embed(message, interaction)
+            if member is not None and modrole in member.roles:
+                return support.Closing(embed, "The user is a moderator: not banned. Review closed.")
+            try:
+                await guild.ban(
+                    discord.Object(id=user_id),
+                    reason=f"Spam message confirmed by {interaction.user}",
+                    delete_message_seconds=43200, # 12 hours
+                )
+            except discord.NotFound as err:
+                # Unknown user: the ban did not happen, never mark it done
+                raise support.Refused("Discord does not know this user: not banned.") from err
+            return support.Closing(embed, "Banned.")
+        return run
+
+    def act_cancel(self, interaction):
+        """Remove the review timeout, if it is still the one of the embed."""
+        async def run(message):
+            fields = support.embed_fields(message.embeds[0])
+            member = await support.timeout_member(
+                interaction.guild, int(fields["User ID"]), fields.get("Timeout until"))
+            log.info("Spam negated by %s", interaction.user)
+            await member.remove_timeout(reason="Spam review completed. Timeout removed")
+            return support.Closing(self.done_embed(message, interaction), "Timeout removed.")
+        return run
+
+
 class AutoMod(commands.Cog):
 
     database = None
@@ -53,8 +116,17 @@ class AutoMod(commands.Cog):
         """Initialize AutoMod cog."""
         self.bot = bot
         self.database = db.Database(self.bot)
+        self.review_locks = {}  # review message ID -> asyncio.Lock, see support.press
+        # Loaded or reloaded (cogwatch) while the bot runs: on_ready does not fire again
+        if bot.is_ready():
+            bot.add_view(ScamReviewView(self))
         self.rule_names = {}  # rule id -> rule name without PREFIX, None if not a bot rule
         self.recent = {}      # (kind, user id) -> monotonic time of the last action
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Register the persistent buttons after a restart."""
+        self.bot.add_view(ScamReviewView(self))
 
     @commands.Cog.listener()
     async def on_auto_moderation_action_execution(self, payload):
@@ -154,7 +226,7 @@ class AutoMod(commands.Cog):
         embed.set_footer(text=config.FOOTER)
         await guild.get_channel(config.LOG_CHAN).send(embed=embed)
 
-    def review_embed(self, payload, name, member, title, description, colour):
+    def review_embed(self, payload, name, member, title, description, colour, until=None):
         """Embed of a scam review. The message content is in the AutoMod alert."""
         embed = discord.Embed(title=title, description=description, colour=colour)
         embed.add_field(name="Rule", value=name)
@@ -168,53 +240,36 @@ class AutoMod(commands.Cog):
             value=discord.utils.snowflake_time(payload.user_id).strftime(TIME_FORMAT),
         )
         embed.add_field(name="AutoMod alert", value=alert_link(payload), inline=False)
+        # State for the persistent buttons (the view keeps nothing in memory)
+        embed.add_field(name="User ID", value=str(payload.user_id))
+        if until is not None:
+            embed.add_field(name="Timeout until", value=until)
         embed.set_footer(text=config.FOOTER)
         return embed
 
     async def scam_review(self, guild, payload, name):
-        """Time out the author for 1 day and let a mod ban or cancel."""
+        """Time out the author for 1 day and post the review with Ban/Cancel buttons."""
         member = await self.fetch_member(guild, payload.user_id)
+        until = None
         if member is not None:
+            # The end is stored in the embed, for the Cancel relevance check. It is
+            # computed here, just before timeout_for computes its own: the Cancel
+            # check allows support.TIMEOUT_TOLERANCE seconds of difference.
+            planned = discord.utils.utcnow() + timedelta(days=1)
             try:
                 await member.timeout_for(duration=timedelta(days=1),
                                          reason=support.AUTOMOD_REVIEW_REASON)
+                until = planned.isoformat()
             except Exception as err:
                 log.error("Couldn't timeout user for spam review: %s", err)
 
-        ban_button = support.Scam(payload.matched_keyword)
         embed = self.review_embed(
             payload, name, member, "Possible scam - manual review",
-            "Review the blocked message in the AutoMod alert.", config.RED,
+            "Review the blocked message in the AutoMod alert.", config.RED, until=until,
         )
         channel = guild.get_channel(config.LOG_CHAN)
-        await channel.send(embed=embed, view=ban_button)
-
-        # Wait for a mod to press a button
-        await ban_button.wait()
-
-        done = self.review_embed(
-            payload, name, member, "Possible scam - manual review completed",
-            f"Review of the blocked message was done by {ban_button.user}", config.GREEN,
-        )
-        await ban_button.inter.message.edit(embed=done, view=None)
-
-        if ban_button.value:
-            log.info("Spam confirmed by %s", ban_button.user)
-            modrole = guild.get_role(config.MOD_ID)
-            if member is not None and modrole in member.roles:
-                return
-            await guild.ban(
-                discord.Object(id=payload.user_id),
-                reason=f"Spam message confirmed by {ban_button.user}",
-                delete_message_seconds=43200, # 12 hours
-            )
-        else:
-            log.info("Spam negated by %s", ban_button.user)
-            if member is not None:
-                try:
-                    await member.remove_timeout(reason="Spam review completed. Timeout removed")
-                except Exception as err:
-                    log.error("Couldn't remove the review timeout: %s", err)
+        # The persistent buttons (ScamReviewView) do the follow-up
+        await channel.send(embed=embed, view=ScamReviewView(self))
 
     async def warn(self, guild, payload):
         """Warn the user for a blacklisted word, as the old check_blacklist."""
