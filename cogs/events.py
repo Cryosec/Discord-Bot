@@ -33,13 +33,10 @@ class Events(commands.Cog):
         self.database = db.Database(self.bot)
 
 
-    # Member join
-    @commands.Cog.listener()
-    async def on_member_join(self, member):
+    # Member join. Without the GUILD_MEMBERS intent there is no on_member_join:
+    # on_message calls this for the system join message (author = new member).
+    async def add_new_member(self, member):
         """Add new members to the database for monitoring."""
-        if member.bot:
-            return
-
         try:
             self.database.addNewUser(str(member.id))
             log.info("New user %s added to monitoring list.", member)
@@ -120,107 +117,105 @@ class Events(commands.Cog):
                 embed=new_embed, view=None
             )
 
-    # But there is no on_member_kick. oof
+    async def _get_user(self, user_id):
+        """Get a user from the cache, or from the API if not cached."""
+        if user_id is None:
+            return None
+        return self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
+
+    # Without the GUILD_MEMBERS intent there is no on_member_remove or
+    # on_member_update. The audit log (GUILD_MODERATION intent) tells us about
+    # kicks and timeouts. The raw event fires also if the user is not cached.
     @commands.Cog.listener()
-    async def on_member_remove(self, member):
-        """Manage logging of member kick.
+    async def on_raw_audit_log_entry(self, payload):
+        """Log kicks and timeouts from the audit log.
 
         Keyword arguments:
         self    -- self reference of the bot
-        member  -- Kicked member ID
+        payload -- RawAuditLogEntryEvent
         """
-        # tz_TX = pytz.timezone('US/Central')
+        if payload.action_type == discord.AuditLogAction.kick:
+            await self.log_kick(payload)
+        elif payload.action_type == discord.AuditLogAction.member_update:
+            change = support.timeout_change(payload.changes)
+            if change == "added":
+                await self.log_timeout(payload)
+            elif change == "removed":
+                await self.log_timeout_removed(payload)
+
+    async def log_kick(self, payload):
+        """Manage logging of member kick."""
         now = datetime.now(tz_TX)
         dt = now.strftime(TIME_FORMAT)
 
-        guild = member.guild
+        guild = self.bot.get_guild(payload.guild_id)
+        member = await self._get_user(payload.target_id)
+        author = await self._get_user(payload.user_id)
 
-        author = None
+        embed = discord.Embed(
+            title="User Kick",
+            description=f"User {member.name}#{member.discriminator} was kicked from the server by {author}.",
+            colour=config.RED,
+        )
+        embed.set_author(
+            name=self.bot.user.name, icon_url=self.bot.user.avatar.url
+        )
+        embed.add_field(name="Reason", value=payload.reason)
+        embed.add_field(name="Timestamp", value=dt)
 
-        # Check if latest entry is actually a kick log
-        async for entry in guild.audit_logs(
-            limit=1, action=discord.AuditLogAction.kick
-        ):
-            if entry.target == member:
-                author = entry.user
+        channel = guild.get_channel(config.LOG_CHAN)
 
-                embed = discord.Embed(
-                    title="User Kick",
-                    description=f"User {member.name}#{member.discriminator} was kicked from the server by {author}.",
-                    colour=config.RED,
-                )
-                embed.set_author(
-                    name=self.bot.user.name, icon_url=self.bot.user.avatar.url
-                )
-                embed.add_field(name="Reason", value=entry.reason)
-                embed.add_field(name="Timestamp", value=dt)
+        await channel.send(content=None, embed=embed)
 
-                channel = guild.get_channel(config.LOG_CHAN)
+        self.database.addKick(str(member.id), str(member.name), payload.reason)
 
-                await channel.send(content=None, embed=embed)
+    async def log_timeout(self, payload):
+        """Log a timeout, with a button to undo it."""
+        guild = self.bot.get_guild(payload.guild_id)
+        user = await self._get_user(payload.target_id)
+        author = await self._get_user(payload.user_id)
 
-                self.database.addKick(str(member.id), str(member.name), entry.reason)
+        # Create button to undo timeout
+        undo_button = support.Untimeout()
 
-    # When a member gets timed out, this should be called
-    @commands.Cog.listener()
-    async def on_member_update(self, before, after):
-        """Called when a member updates their profile.
+        channel = guild.get_channel(config.LOG_CHAN)
+        await channel.send(
+            embed=support.timeout_embed(
+                self.bot, user, author, payload.reason
+            ),
+            view=undo_button
+        )
 
-        Args:
-            before (Member): The updated member's old info
-            after (Member): The updated member's new info
-        """
+        # Wait for button press on embed
+        await undo_button.wait()
 
+        # Respond to button press
+        if undo_button.value:
+            try:
+                member = await guild.fetch_member(payload.target_id)
+                await member.remove_timeout(reason="Timeout removed")
+            except discord.NotFound:
+                log.info("User %s left the server, no timeout to remove.", user)
+
+    async def log_timeout_removed(self, payload):
+        """Log the removal of a timeout."""
         now = datetime.now(tz_TX)
         dt = now.strftime(TIME_FORMAT)
-        guild = after.guild
+        guild = self.bot.get_guild(payload.guild_id)
+        user = await self._get_user(payload.target_id)
 
-        # If timed_out from false -> true
-        if not before.timed_out and after.timed_out:
+        embed = discord.Embed(
+            title="User timeout removed",
+            description = f"User {user.name}#{user.discriminator} timeout has been removed.",
+            colour = config.YELLOW,
+        )
+        embed.set_author(
+            name = self.bot.user.name, icon_url = self.bot.user.avatar.url
+        )
+        embed.add_field(name="Timestamp", value = dt)
 
-            # Get last entry of audit log that's a member update
-            async for entry in guild.audit_logs(
-                limit=1, action=discord.AuditLogAction.member_update
-            ):
-                # Check if it's the same user of the invoked event
-                if entry.target == after:
-                    # Get who caused the update
-                    author = entry.user
-                else: author = None
-
-                # Create button to undo timeout
-                undo_button = support.Untimeout()
-
-                channel = guild.get_channel(config.LOG_CHAN)
-                await channel.send(
-                    embed=support.timeout_embed(
-                        self.bot, after, author, entry.reason
-                    ),
-                    view=undo_button
-                )
-
-                # Wait for button press on embed
-                await undo_button.wait()
-
-                # Respond to button press
-                if undo_button.value:
-                    await after.remove_timeout(reason="Timeout removed")
-
-
-        # If timed_out from true -> false
-        if not after.timed_out and before.timed_out:
-            embed = discord.Embed(
-                title="User timeout removed",
-                description = f"User {after.name}#{after.discriminator} timeout has been removed.",
-                colour = config.YELLOW,
-            )
-            embed.set_author(
-                name = self.bot.user.name, icon_url = self.bot.user.avatar.url
-            )
-            embed.add_field(name="Timestamp", value = dt)
-
-            channel = guild.get_channel(config.LOG_CHAN)
-            await channel.send(embed=embed)
+        channel = guild.get_channel(config.LOG_CHAN)
+        await channel.send(embed=embed)
 
 
     @commands.Cog.listener()
@@ -235,11 +230,21 @@ class Events(commands.Cog):
         if message.author == self.bot.user:
             return
 
+        # System join message: track the new member, no filters to run
+        if support.is_member_join(message):
+            await self.add_new_member(message.author)
+            return
+
         # Ignore DMs
         if isinstance(message.channel, discord.channel.DMChannel):
             await message.reply(
                 "This bot doesn't manage direct messages because the author is a lazy fuck."
             )
+            return
+
+        # The honeypot cog manages its channel alone. The other filters must not
+        # act on a message that is already deleted, or on a banned author.
+        if message.channel.id == getattr(config, "HONEYPOT_CHAN", 0):
             return
 
         # Check if new user is sending links

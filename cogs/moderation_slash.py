@@ -226,9 +226,14 @@ class ModerationSlash(commands.Cog):
         """Temporarily ban selected member from the server without deleting messages."""
         role = ctx.guild.get_role(config.MOD_ID)
         channel = ctx.guild.get_channel(config.LOG_CHAN)
-        mem = ctx.guild.get_member(member.id)
+        # No member cache without GUILD_MEMBERS: ask the API. A user that is
+        # not in the server has no roles to check.
+        try:
+            mem = await ctx.guild.fetch_member(member.id)
+        except discord.NotFound:
+            mem = None
 
-        if role in mem.roles:
+        if mem is not None and role in mem.roles:
             await ctx.respond("You cannot ban a moderator through me.", ephemeral = True)
         else:
             if duration is None:
@@ -365,7 +370,11 @@ class ModerationSlash(commands.Cog):
         if user is not None:
 
             user = await self.bot.fetch_user(user.id)
-            member = ctx.guild.get_member(user.id)
+            # No member cache without GUILD_MEMBERS: ask the API.
+            try:
+                member = await ctx.guild.fetch_member(user.id)
+            except discord.NotFound:
+                member = None
 
             if member is not None:
 

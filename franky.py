@@ -48,15 +48,18 @@ init_extensions = [
     "cogs.users",
     "cogs.users-slash",
     "cogs.events",
+    "cogs.honeypot",
     #"cogs.giveaway",
     #"cogs.poll",
     #"cogs.modalpoll",
 ]
 
 intents = discord.Intents.default()
-intents.presences = True
-intents.members = True
-intents.message_content = True
+intents.presences = False  # unused: no code reads presence/activity/status; keep off so the bot doesn't crash if the portal intent is disabled
+# Discord denied the privileged intents. Kicks and timeouts come from the audit
+# log (Intents.moderation), joins from the system join message.
+intents.members = False
+intents.message_content = False
 
 bot = commands.Bot(
     command_prefix=commands.when_mentioned_or("!"),

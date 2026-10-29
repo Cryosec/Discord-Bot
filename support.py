@@ -168,6 +168,34 @@ def timeout_embed(
 
     return embed
 
+
+def timeout_change(changes) -> str:
+    """Read the raw 'changes' of a MEMBER_UPDATE audit log entry.
+
+    The bot has no GUILD_MEMBERS intent, so it gets timeouts from the audit log.
+
+    Returns:
+        "added" if a timeout was set or extended, "removed" if it was
+        removed, None if the entry is not about a timeout.
+    """
+    for change in changes or []:
+        if change.get("key") != "communication_disabled_until":
+            continue
+        if change.get("new_value") is not None:
+            return "added"
+        if change.get("old_value") is not None:
+            return "removed"
+    return None
+
+
+def is_member_join(message) -> bool:
+    """True if the message is the system 'user joined' message of a human.
+
+    Without the GUILD_MEMBERS intent there is no on_member_join. The join
+    system message comes with GUILD_MESSAGES, and its author is the new member.
+    """
+    return message.type == discord.MessageType.new_member and not message.author.bot
+
 # Define a persistent view for @Survivor role
 class Survivor(discord.ui.View):
     def __init__(self):
