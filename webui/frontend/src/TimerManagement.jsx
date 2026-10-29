@@ -6,6 +6,7 @@ import ConfirmationModal from './ConfirmationModal';
 import { toBotDate } from './botDate';
 import Pagination from './Pagination';
 import { useAuth } from './AuthContext';
+import { apiFetch } from './api';
 
 const API_BASE_URL = '/api'; // Use relative path
 
@@ -36,7 +37,7 @@ function TimerManagement() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/timers`, {
+      const response = await apiFetch(`${API_BASE_URL}/timers`, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
         credentials: 'include', // <<< ADD THIS
@@ -131,7 +132,7 @@ function TimerManagement() {
     const payload = addType === 'mute' ? { user_id: newUserId, endMute: endDate } : { user_id: newUserId, endBan: endDate };
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -158,7 +159,7 @@ function TimerManagement() {
     if (!itemToDelete) return;
     setIsLoading(true); setError(null); setIsModalOpen(false);
     try {
-      const response = await fetch(`${API_BASE_URL}/timers/${itemToDelete}`, { method: 'DELETE' });
+      const response = await apiFetch(`${API_BASE_URL}/timers/${itemToDelete}`, { method: 'DELETE' });
       if (!response.ok) {
          // Handle 404 specifically (timer not found)
          if (response.status === 404) {

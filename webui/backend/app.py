@@ -6,6 +6,7 @@ from logging.handlers import RotatingFileHandler
 from urllib.parse import urlencode
 from functools import wraps
 from datetime import datetime
+import time
 import uuid
 
 # Flask and Extensions
@@ -242,12 +243,93 @@ def handle_db_error(conn, error, failure_message_prefix, log_context, status_cod
     return jsonify({"error": f"{failure_message_prefix}: Operation failed", "details": error_detail}), status_code
 
 
+# --- Role Check (Discord) ---
+ROLE_RECHECK_INTERVAL = 15 * 60 # Seconds between role re-checks of a session
+ROLE_MAX_UNVERIFIED = 60 * 60 # Seconds a session survives without a successful check
+ROLE_MIN_RETRY = 60 # Minimum seconds between attempts after a transient error
+
+
+class TransientRoleCheckError(Exception):
+    """Discord role check failed for a reason that says nothing about the user's roles."""
+    def __init__(self, message, status=None, retry_after=None):
+        super().__init__(message)
+        self.status = status # HTTP status from Discord, None for network errors
+        self.retry_after = retry_after # Seconds, from a 429 response
+
+
+def _now():
+    return time.time()
+
+
+def fetch_member_roles(user_id):
+    """Returns the guild role IDs of the user (set), or None if not a member (404).
+    Raises TransientRoleCheckError on any other error."""
+    member_url = f'{DISCORD_API_BASE_URL}/guilds/{DISCORD_GUILD_ID}/members/{user_id}'
+    bot_headers = {'Authorization': f'Bot {DISCORD_BOT_TOKEN}'}
+    try:
+        member_response = requests.get(member_url, headers=bot_headers, timeout=10)
+    except requests.exceptions.RequestException as e:
+        raise TransientRoleCheckError(f"network error: {e}") from e
+    status = member_response.status_code
+    if status == 404:
+        return None
+    if status != 200:
+        retry_after = None
+        if status == 429:
+            try:
+                retry_after = float(member_response.headers.get('Retry-After'))
+            except (TypeError, ValueError):
+                retry_after = None
+        # 401/403 = bot token or permission problem (e.g. Members Intent)
+        raise TransientRoleCheckError(f"Discord returned HTTP {status}", status=status, retry_after=retry_after)
+    return set(member_response.json().get('roles', []))
+
+
+def ensure_mod():
+    """True if the session belongs to a moderator who was checked recently enough.
+    Re-checks the roles every ROLE_RECHECK_INTERVAL; clears the session if the
+    user lost the role. On transient errors the session lives at most
+    ROLE_MAX_UNVERIFIED after the last successful check."""
+    user_id = session.get('user_id')
+    if not user_id or not session.get('is_authorized'):
+        return False
+    now = _now()
+    checked_at = session.get('roles_checked_at')
+    if checked_at is not None and now - checked_at < ROLE_RECHECK_INTERVAL:
+        return True
+    if checked_at is not None and now < session.get('roles_retry_at', 0):
+        # Backing off after a transient error: no Discord call, but the window still applies
+        if now - checked_at >= ROLE_MAX_UNVERIFIED:
+            log.warning(f"Session of user {user_id} unverified for too long. Logging out.")
+            session.clear()
+            return False
+        return True
+    try:
+        roles = fetch_member_roles(user_id)
+    except TransientRoleCheckError as e:
+        # A session without roles_checked_at has no verified basis: fail closed
+        if checked_at is None or now - checked_at >= ROLE_MAX_UNVERIFIED:
+            log.warning(f"Role check for user {user_id} failed ({e}) and the session is past the unverified window. Logging out.")
+            session.clear()
+            return False
+        session['roles_retry_at'] = now + max(e.retry_after or 0, ROLE_MIN_RETRY)
+        log.warning(f"Role check for user {user_id} failed ({e}). Keeping the session until the unverified window ends.")
+        return True
+    if not roles or not (roles & REQUIRED_MOD_ROLE_IDS):
+        log.warning(f"User {user_id} no longer has a moderator role. Logging out.")
+        session.clear()
+        return False
+    session['roles_checked_at'] = now
+    session.pop('roles_retry_at', None)
+    return True
+
+
 # --- Authorization Decorator ---
 def mod_required(f):
-    """Decorator to ensure the user is logged in and authorized via session."""
+    """Decorator to ensure the user is logged in and still a moderator (re-checked periodically)."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('user_id') or not session.get('is_authorized'):
+        if not ensure_mod():
             log.warning(f"Unauthorized access attempt to {request.path}")
             abort(401) # Unauthorized - User needs to log in or lacks permissions
         # User is logged in and authorized
@@ -407,40 +489,30 @@ def discord_callback():
         return redirect(f"{FRONTEND_BASE_URL}?error=guild_fetch_failed")
 
     # --- 5. Check Roles within Target Guild (using Bot Token) ---
-    member_url = f'{DISCORD_API_BASE_URL}/guilds/{DISCORD_GUILD_ID}/members/{user_id}'
-    bot_headers = {'Authorization': f'Bot {DISCORD_BOT_TOKEN}'}
     try:
         log.info(f"Fetching member roles for user {user_id} in guild {DISCORD_GUILD_ID} using Bot Token...")
-        member_response = requests.get(member_url, headers=bot_headers, timeout=10)
-        member_response.raise_for_status() # Check for 404 (not member) or 403 (bot lacks perms)
-        member_info = member_response.json()
-        user_roles = set(member_info.get('roles', [])) # Get the list of role IDs the user has
-
-        # Check if user has any of the required moderator roles
-        has_mod_role = any(role_id in REQUIRED_MOD_ROLE_IDS for role_id in user_roles)
-
-        if not has_mod_role:
-            log.warning(f"User {user_id} ({full_username}) does not have required roles in guild {DISCORD_GUILD_ID}. User roles: {user_roles}, Required: {REQUIRED_MOD_ROLE_IDS}")
-            return redirect(f"{FRONTEND_BASE_URL}?error=unauthorized_role")
-        log.info(f"User {user_id} has required moderator role(s). Authorizing.")
-
-    except requests.exceptions.RequestException as e:
-        if e.response is not None:
-            log.exception(f"Error fetching member roles from Discord (Status {e.response.status_code}): {e}. Check Bot Token and permissions (Members Intent?). Response: {e.response.text}")
-            if e.response.status_code == 404:
-                # Should have been caught by guild check, but handle defensively
-                return redirect(f"{FRONTEND_BASE_URL}?error=not_in_guild")
-            if e.response.status_code == 403:
-                return redirect(f"{FRONTEND_BASE_URL}?error=bot_permission_error")
-        else:
-            log.exception(f"Network or other error fetching member roles from Discord: {e}")
+        user_roles = fetch_member_roles(user_id)
+    except TransientRoleCheckError as e:
+        log.error(f"Error fetching member roles from Discord: {e}. Check Bot Token and permissions (Members Intent?).")
+        if e.status == 403:
+            return redirect(f"{FRONTEND_BASE_URL}?error=bot_permission_error")
         return redirect(f"{FRONTEND_BASE_URL}?error=role_check_failed")
+    if user_roles is None:
+        # Should have been caught by guild check, but handle defensively
+        return redirect(f"{FRONTEND_BASE_URL}?error=not_in_guild")
+
+    # Check if user has any of the required moderator roles
+    if not any(role_id in REQUIRED_MOD_ROLE_IDS for role_id in user_roles):
+        log.warning(f"User {user_id} ({full_username}) does not have required roles in guild {DISCORD_GUILD_ID}. User roles: {user_roles}, Required: {REQUIRED_MOD_ROLE_IDS}")
+        return redirect(f"{FRONTEND_BASE_URL}?error=unauthorized_role")
+    log.info(f"User {user_id} has required moderator role(s). Authorizing.")
 
     # --- 6. Create Session ---
     session.clear() # Clear previous session data just in case
     session['user_id'] = user_id
     session['username'] = full_username
     session['is_authorized'] = True # Mark user as authorized moderator
+    session['roles_checked_at'] = _now() # Roles verified just now
     session.permanent = True # Use the app's permanent session lifetime
 
     log.info(f"Session created for user {user_id} ({full_username}). Redirecting to frontend.")
@@ -449,7 +521,7 @@ def discord_callback():
 @app.route('/api/auth/status')
 def auth_status():
     """Checks if the user has a valid, authorized session."""
-    if session.get('user_id') and session.get('is_authorized'):
+    if ensure_mod():
         return jsonify({
             'is_logged_in': True,
             'user': {

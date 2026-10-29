@@ -3,6 +3,7 @@
 // Landing page displaying stats and user search
 // ========================================================================
 import React, { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from './api';
 
 const API_BASE_URL = '/api'; // Use relative path
 
@@ -95,7 +96,7 @@ function Home() {
         setStatsLoading(true);
         setStatsError(null);
         try {
-            const response = await fetch(`${API_BASE_URL}/stats/summary`);
+            const response = await apiFetch(`${API_BASE_URL}/stats/summary`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -125,7 +126,7 @@ function Home() {
         setSearchResult(null); // Clear previous results
 
         try {
-            const response = await fetch(`${API_BASE_URL}/search/user/${searchUserId.trim()}`);
+            const response = await apiFetch(`${API_BASE_URL}/search/user/${searchUserId.trim()}`);
             if (!response.ok) {
                  if (response.status === 400) { // Handle specific backend validation error
                      const errorData = await response.json().catch(() => ({}));

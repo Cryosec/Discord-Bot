@@ -3,6 +3,7 @@ import ConfirmationModal from './ConfirmationModal';
 import Pagination from './Pagination';
 import InfractionDetailModal from './InfractionDetailModal';
 import { useAuth } from './AuthContext';
+import { apiFetch } from './api';
 
 const API_BASE_URL = '/api'; // Use relative path
 
@@ -39,7 +40,7 @@ function InfractionManagement() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/infractions`, {
+      const response = await apiFetch(`${API_BASE_URL}/infractions`, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
         credentials: 'include', // <<< ADD THIS
@@ -120,7 +121,7 @@ function InfractionManagement() {
          default: endpoint = `${API_BASE_URL}/warnings`; break;
      }
      try {
-         const response = await fetch(endpoint, {
+         const response = await apiFetch(endpoint, {
              method: 'POST', headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ user_id: addUserId, tag: addTag, reason: addReason }),
          });
@@ -148,7 +149,7 @@ function InfractionManagement() {
     setDetailError(null);     // Clear previous detail errors
 
     try {
-        const response = await fetch(`${API_BASE_URL}/infractions/${userId}`);
+        const response = await apiFetch(`${API_BASE_URL}/infractions/${userId}`);
         if (!response.ok) {
             if (response.status === 404) {
                  throw new Error(`No infraction details found for user ${userId}.`);

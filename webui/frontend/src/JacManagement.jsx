@@ -3,6 +3,7 @@ import ConfirmationModal from './ConfirmationModal';
 import { toBotDate } from './botDate';
 import Pagination from './Pagination'; // Import the Pagination component
 import { useAuth } from './AuthContext';
+import { apiFetch } from './api';
 
 
 const API_BASE_URL = '/api'; // Use relative path
@@ -36,7 +37,7 @@ function JacManagement() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/jac`, {
+      const response = await apiFetch(`${API_BASE_URL}/jac`, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
         credentials: 'include', // <<< ADD THIS
@@ -125,7 +126,7 @@ function JacManagement() {
     const currentDate = toBotDate(new Date());
 
     try {
-      const response = await fetch(`${API_BASE_URL}/jac`, {
+      const response = await apiFetch(`${API_BASE_URL}/jac`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: newUserId, link: newLink, date: currentDate }),
       });
@@ -150,7 +151,7 @@ function JacManagement() {
     if (!itemToDelete) return; // Guard clause
     setIsLoading(true); setError(null); setIsModalOpen(false); // Set loading, clear error, close modal
     try {
-      const response = await fetch(`${API_BASE_URL}/jac/${itemToDelete}`, { method: 'DELETE' });
+      const response = await apiFetch(`${API_BASE_URL}/jac/${itemToDelete}`, { method: 'DELETE' });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(`HTTP error! status: ${response.status} - ${errorData.error || errorData.message || 'Unknown error'}`);

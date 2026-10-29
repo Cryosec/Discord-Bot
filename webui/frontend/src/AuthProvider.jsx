@@ -1,8 +1,10 @@
 // src/AuthProvider.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AuthContext from './AuthContext';
+import { setUnauthorizedHandler } from './api';
 
 const API_BASE_URL = '/api'; // Use relative path
+const STATUS_POLL_INTERVAL_MS = 5 * 60 * 1000; // Re-check the session while logged in
 
 export const AuthProvider = ({ children }) => {
   const [authState, setAuthState] = useState({
@@ -13,8 +15,11 @@ export const AuthProvider = ({ children }) => {
   });
 
   // Function to check authentication status with the backend
-  const checkAuthStatus = useCallback(async () => {
-    setAuthState((prev) => ({ ...prev, isLoading: true, error: null }));
+  // silent: background poll, no loading state and no logout on network errors
+  const checkAuthStatus = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setAuthState((prev) => ({ ...prev, isLoading: true, error: null }));
+    }
     try {
       const response = await fetch(`${API_BASE_URL}/auth/status`, {
         method: 'GET',
@@ -52,6 +57,9 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Error checking authentication status:', error);
+      if (silent) {
+        return; // Keep the current state: the next poll tries again
+      }
       setAuthState({
         isLoggedIn: false,
         user: null,
@@ -65,6 +73,18 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     checkAuthStatus();
   }, [checkAuthStatus]);
+
+  // Poll the status while logged in: the backend re-checks the mod role, so an
+  // idle dashboard logs out after a role removal
+  useEffect(() => {
+    if (!authState.isLoggedIn) {
+      return undefined;
+    }
+    const intervalId = setInterval(() => {
+      checkAuthStatus({ silent: true });
+    }, STATUS_POLL_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [authState.isLoggedIn, checkAuthStatus]);
 
   // Function to initiate the Discord login flow
   const login = () => {
@@ -113,6 +133,14 @@ export const AuthProvider = ({ children }) => {
       });
     }
   };
+
+  // apiFetch calls this on a 401 (through a ref: logout changes on every render)
+  const logoutRef = useRef(logout);
+  logoutRef.current = logout;
+  useEffect(() => {
+    setUnauthorizedHandler(() => logoutRef.current());
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   // Value provided by the context
   const contextValue = {

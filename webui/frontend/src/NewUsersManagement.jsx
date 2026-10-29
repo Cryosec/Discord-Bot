@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Pagination from './Pagination';
 import { useAuth } from './AuthContext';
+import { apiFetch } from './api';
 
 const API_BASE_URL = '/api';
 
@@ -22,7 +23,7 @@ function NewUsersManagement() {
         setIsLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${API_BASE_URL}/new-users`, {
+            const response = await apiFetch(`${API_BASE_URL}/new-users`, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' },
                 credentials: 'include',
