@@ -258,4 +258,4 @@ Regression suite first: `python -m pytest -q tests` (all green), `cd webui/front
 8. **Scam review** (only once AutoMod is enforcing `scam`/`invites`): one review embed, no extra timeout log. Cancel removes the timeout; Ban bans with 12 h of messages deleted.
 9. **Honeypot** (with `HONEYPOT_AUTOBAN = False`): one review embed, no extra timeout log. Release and Ban work.
 10. **Async DB.** `/warn`, `/unwarn`, `/mute` with a duration, `/tempban`, `/timers`, `/kc`, `/jac post` and the hourly timer job behave as before. No "coroutine was never awaited" in `logs/`.
-11. **Web UI.** Log in as a mod: works. Remove the mod role from a test mod: within 15 min (at the next request or the 5-min status poll) the dashboard logs out. Give the role back: login works again.
+11. **Web UI.** Log in as a mod: works. Remove the mod role from a test mod: within 15 min (at the next request or the 5-min status poll) the dashboard logs out. In Redis, `revoked:<user id>` exists with a TTL of about 4500 s. Give the role back: login works again and the key is gone. The session cookie value changes across a login.

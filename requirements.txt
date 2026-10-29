@@ -7,6 +7,6 @@ sqlalchemy
 mariadb
 py-cord==2.8.1
 Flask>=2.0
-Flask-Session
+Flask-Session>=0.6
 gunicorn>=20.0
 gevent

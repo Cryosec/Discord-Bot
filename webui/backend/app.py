@@ -261,6 +261,36 @@ def _now():
     return time.time()
 
 
+# --- Durable revocation (Redis) ---
+# Flask-Session rewrites the whole session at the end of each request, so a
+# concurrent request can resurrect a session that another request cleared. A
+# per-user Redis key makes the revocation survive that, and applies to every
+# session of the user.
+REVOKED_KEY_PREFIX = 'revoked:'
+REVOKED_TTL = ROLE_MAX_UNVERIFIED + ROLE_RECHECK_INTERVAL # Longer than any unverified window
+
+
+def _revoked_key(user_id):
+    return f'{REVOKED_KEY_PREFIX}{user_id}'
+
+
+def mark_revoked(user_id):
+    """Records that the user lost the mod role (best effort: the session is cleared anyway)."""
+    try:
+        redis_client.set(_revoked_key(user_id), '1', ex=REVOKED_TTL)
+    except Exception as e:
+        log.error(f"Could not write the revocation key for user {user_id}: {e}")
+
+
+def is_revoked(user_id):
+    """True if the user is revoked. Fails closed (True) if Redis cannot be read."""
+    try:
+        return bool(redis_client.exists(_revoked_key(user_id)))
+    except Exception as e:
+        log.error(f"Could not read the revocation key for user {user_id}: {e}. Denying the request.")
+        return True
+
+
 def fetch_member_roles(user_id):
     """Returns the guild role IDs of the user (set), or None if not a member (404).
     Raises TransientRoleCheckError on any other error."""
@@ -293,6 +323,10 @@ def ensure_mod():
     user_id = session.get('user_id')
     if not user_id or not session.get('is_authorized'):
         return False
+    if is_revoked(user_id): # First: before every other branch
+        log.warning(f"User {user_id} is revoked. Logging out.")
+        session.clear()
+        return False
     now = _now()
     checked_at = session.get('roles_checked_at')
     if checked_at is not None and now - checked_at < ROLE_RECHECK_INTERVAL:
@@ -316,7 +350,11 @@ def ensure_mod():
         log.warning(f"Role check for user {user_id} failed ({e}). Keeping the session until the unverified window ends.")
         return True
     if not roles or not (roles & REQUIRED_MOD_ROLE_IDS):
-        log.warning(f"User {user_id} no longer has a moderator role. Logging out.")
+        if roles is None:
+            log.warning(f"User {user_id} is no longer a member of the guild (404). Logging out.")
+        else:
+            log.warning(f"User {user_id} no longer has a moderator role. Logging out.")
+        mark_revoked(user_id)
         session.clear()
         return False
     session['roles_checked_at'] = now
@@ -508,12 +546,22 @@ def discord_callback():
     log.info(f"User {user_id} has required moderator role(s). Authorizing.")
 
     # --- 6. Create Session ---
+    try:
+        redis_client.delete(_revoked_key(user_id)) # A confirmed mod role lifts a revocation
+    except Exception as e:
+        log.error(f"Could not clear the revocation key for user {user_id}: {e}")
+        return redirect(f"{FRONTEND_BASE_URL}?error=role_check_failed")
     session.clear() # Clear previous session data just in case
     session['user_id'] = user_id
     session['username'] = full_username
     session['is_authorized'] = True # Mark user as authorized moderator
     session['roles_checked_at'] = _now() # Roles verified just now
     session.permanent = True # Use the app's permanent session lifetime
+    # New sid against session fixation. Flask-Session's regenerate() does nothing
+    # on an empty session, so it runs after the keys above are set.
+    regenerate = getattr(app.session_interface, 'regenerate', None)
+    if regenerate is not None:
+        regenerate(session)
 
     log.info(f"Session created for user {user_id} ({full_username}). Redirecting to frontend.")
     return redirect(FRONTEND_BASE_URL) # Redirect to the main frontend page

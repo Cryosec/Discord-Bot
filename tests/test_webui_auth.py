@@ -33,6 +33,36 @@ def stub_redis(monkeypatch):
     monkeypatch.setattr(redis, "Redis", FakeRedis)
 
 
+class FakeKeyStore:
+    """Dict-backed stand-in for the Redis client (get/set/delete/exists)."""
+    def __init__(self):
+        self.data = {}
+        self.ttls = {}
+        self.fail = False
+
+    def _check(self):
+        if self.fail:
+            raise ConnectionError("redis down")
+
+    def get(self, key):
+        self._check()
+        return self.data.get(key)
+
+    def set(self, key, value, ex=None):
+        self._check()
+        self.data[key] = value
+        self.ttls[key] = ex
+        return True
+
+    def delete(self, *keys):
+        self._check()
+        return sum(self.data.pop(k, None) is not None for k in keys)
+
+    def exists(self, *keys):
+        self._check()
+        return sum(k in self.data for k in keys)
+
+
 @pytest.fixture
 def webapp(monkeypatch, tmp_path):
     from flask.sessions import SecureCookieSessionInterface
@@ -62,6 +92,8 @@ def webapp(monkeypatch, tmp_path):
     clock = {"now": T0}
     monkeypatch.setattr(module, "_now", lambda: clock["now"])
     module.clock = clock
+    module.keys = FakeKeyStore()
+    monkeypatch.setattr(module, "redis_client", module.keys)
     module.fetch = MagicMock(return_value={"900"})
     monkeypatch.setattr(module, "fetch_member_roles", module.fetch)
     return module
@@ -327,3 +359,145 @@ def test_callback_sets_roles_checked_at(webapp, monkeypatch):
     assert data["user_id"] == "42" and data["is_authorized"] is True
     assert data["roles_checked_at"] == T0 + 5
     webapp.fetch.assert_called_once_with("42")
+
+
+# --- Durable revocation ---
+
+def test_revocation_writes_key_with_long_ttl(webapp):
+    client = webapp.app.test_client()
+    login(client)
+    webapp.fetch.return_value = set()
+    webapp.clock["now"] = T0 + 15 * MIN
+    assert client.get("/api/_protected").status_code == 401
+    assert "revoked:42" in webapp.keys.data
+    assert webapp.keys.ttls["revoked:42"] >= webapp.ROLE_MAX_UNVERIFIED
+
+
+def test_404_writes_revocation_key(webapp):
+    client = webapp.app.test_client()
+    login(client)
+    webapp.fetch.return_value = None
+    webapp.clock["now"] = T0 + 15 * MIN
+    assert client.get("/api/_protected").status_code == 401
+    assert "revoked:42" in webapp.keys.data
+
+
+def test_transient_error_does_not_revoke(webapp):
+    client = webapp.app.test_client()
+    login(client)
+    webapp.fetch.side_effect = webapp.TransientRoleCheckError("x", status=429)
+    webapp.clock["now"] = T0 + 15 * MIN
+    assert client.get("/api/_protected").status_code == 200
+    assert webapp.keys.data == {}
+
+
+def test_stale_session_resurrected_after_revocation_still_gets_401(webapp):
+    """A clears the session; B (429, started with the old session) saves after A."""
+    client = webapp.app.test_client()
+    login(client)
+    webapp.fetch.return_value = set()
+    webapp.clock["now"] = T0 + 15 * MIN
+    assert client.get("/api/_protected").status_code == 401
+    # request B, started before, saves its old session + retry_at after A cleared it
+    login(client, roles_retry_at=T0 + 16 * MIN)
+    webapp.fetch.side_effect = webapp.TransientRoleCheckError("rate", status=429)
+    webapp.clock["now"] = T0 + 16 * MIN
+    assert client.get("/api/_protected").status_code == 401
+    assert not allowed(client, "/api/auth/status")
+    # even after the back-off ends, without the key Discord's 429 would keep the session
+    webapp.clock["now"] = T0 + 17 * MIN
+    login(client)
+    assert client.get("/api/_protected").status_code == 401
+
+
+def test_revocation_applies_to_all_sessions_of_user(webapp):
+    c1, c2 = webapp.app.test_client(), webapp.app.test_client()
+    login(c1)
+    login(c2)
+    webapp.fetch.return_value = set()
+    webapp.clock["now"] = T0 + 15 * MIN
+    assert c1.get("/api/_protected").status_code == 401
+    webapp.fetch.reset_mock()
+    webapp.clock["now"] = T0 + 16 * MIN # c2 is fresh enough to skip a check otherwise
+    assert c2.get("/api/_protected").status_code == 401
+    webapp.fetch.assert_not_called()
+
+
+def test_fresh_session_is_denied_while_revoked(webapp):
+    client = webapp.app.test_client()
+    login(client)
+    webapp.keys.set("revoked:42", "1", ex=10)
+    assert client.get("/api/_protected").status_code == 401
+    webapp.fetch.assert_not_called()
+
+
+def test_redis_error_on_revocation_read_fails_closed(webapp):
+    client = webapp.app.test_client()
+    login(client)
+    webapp.keys.fail = True
+    assert client.get("/api/_protected").status_code == 401
+    assert not allowed(client, "/api/auth/status")
+    webapp.fetch.assert_not_called()
+
+
+def mock_oauth(webapp, monkeypatch):
+    def fake_post(*a, **k):
+        r = MagicMock(); r.json.return_value = {"access_token": "tok"}; return r
+
+    def fake_get(url, **k):
+        r = MagicMock()
+        r.json.return_value = ([{"id": "111"}] if url.endswith("/guilds") else
+                               {"id": "42", "username": "mod", "discriminator": "0"})
+        return r
+
+    monkeypatch.setattr(webapp.requests, "post", fake_post)
+    monkeypatch.setattr(webapp.requests, "get", fake_get)
+
+
+def test_login_with_mod_role_lifts_revocation(webapp, monkeypatch):
+    mock_oauth(webapp, monkeypatch)
+    webapp.keys.set("revoked:42", "1", ex=3600)
+    client = webapp.app.test_client()
+    with client.session_transaction() as sess:
+        sess["oauth_state"] = "st"
+    assert client.get("/api/auth/discord/callback?code=c&state=st").status_code == 302
+    assert "revoked:42" not in webapp.keys.data
+    assert client.get("/api/_protected").status_code == 200
+
+
+def test_login_without_mod_role_keeps_revocation(webapp, monkeypatch):
+    mock_oauth(webapp, monkeypatch)
+    webapp.fetch.return_value = {"123"}
+    webapp.keys.set("revoked:42", "1", ex=3600)
+    client = webapp.app.test_client()
+    with client.session_transaction() as sess:
+        sess["oauth_state"] = "st"
+    client.get("/api/auth/discord/callback?code=c&state=st")
+    assert "revoked:42" in webapp.keys.data
+
+
+def test_callback_regenerates_sid(webapp, monkeypatch):
+    """The cookie-session swap has no sid, so a recording interface checks the call."""
+    mock_oauth(webapp, monkeypatch)
+    calls = []
+
+    class Recording(type(webapp.app.session_interface)):
+        def regenerate(self, session):
+            calls.append(dict(session)) # must already hold user_id: empty sessions are skipped
+
+    webapp.app.session_interface = Recording()
+    client = webapp.app.test_client()
+    with client.session_transaction() as sess:
+        sess["oauth_state"] = "st"
+    assert client.get("/api/auth/discord/callback?code=c&state=st").status_code == 302
+    assert len(calls) == 1 and calls[0]["user_id"] == "42"
+
+
+def test_callback_without_regenerate_still_logs_in(webapp, monkeypatch):
+    mock_oauth(webapp, monkeypatch)
+    client = webapp.app.test_client()
+    with client.session_transaction() as sess:
+        sess["oauth_state"] = "st"
+    assert not hasattr(webapp.app.session_interface, "regenerate")
+    assert client.get("/api/auth/discord/callback?code=c&state=st").status_code == 302
+    assert session_data(client)["user_id"] == "42"
