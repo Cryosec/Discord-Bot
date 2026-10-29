@@ -51,7 +51,7 @@ bot = commands.Bot(
     intents=intents,
 )
 
-database = db.Database(bot)
+database = db.AsyncDatabase(bot)
 
 # on_ready fires again after a new gateway session: start cogwatch only once
 watcher = None

@@ -33,7 +33,7 @@ def env(monkeypatch):
     bot.fetch_invite = AsyncMock(return_value=invite)
 
     cog = jac.Jac(bot)
-    cog.database = MagicMock()
+    cog.database = AsyncMock()
     cog.database.getJac.return_value = []
 
     interaction = MagicMock()

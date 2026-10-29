@@ -115,7 +115,7 @@ class AutoMod(commands.Cog):
     def __init__(self, bot):
         """Initialize AutoMod cog."""
         self.bot = bot
-        self.database = db.Database(self.bot)
+        self.database = db.AsyncDatabase(self.bot)
         self.review_locks = {}  # review message ID -> asyncio.Lock, see support.press
         # Loaded or reloaded (cogwatch) while the bot runs: on_ready does not fire again
         if bot.is_ready():
@@ -203,7 +203,7 @@ class AutoMod(commands.Cog):
             except (AttributeError, discord.HTTPException) as err:
                 log.error("Unable to delete message %s: %s", payload.message_id, err)
                 return
-        self.database.addKillCount(str(payload.user_id))
+        await self.database.addKillCount(str(payload.user_id))
 
     async def fetch_member(self, guild, user_id):
         """Member from the API (no GUILD_MEMBERS cache), None if the user left."""
@@ -282,7 +282,7 @@ class AutoMod(commands.Cog):
             )
 
         reason = f"User sent prohibited word in {channel}"
-        self.database.addWarning(str(payload.user_id), str(user.name), reason)
+        await self.database.addWarning(str(payload.user_id), str(user.name), reason)
 
         # Generate log embed
         embed = discord.Embed(

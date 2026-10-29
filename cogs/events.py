@@ -119,7 +119,7 @@ class Events(commands.Cog):
     def __init__(self, bot):
         """Initialize Events cog."""
         self.bot = bot
-        self.database = db.Database(self.bot)
+        self.database = db.AsyncDatabase(self.bot)
         self.review_locks = {}  # log message ID -> asyncio.Lock, see support.press
         # Loaded or reloaded (cogwatch) while the bot runs: on_ready does not fire again
         if bot.is_ready():
@@ -141,7 +141,7 @@ class Events(commands.Cog):
     async def add_new_member(self, member):
         """Add new members to the database for monitoring."""
         try:
-            self.database.addNewUser(str(member.id))
+            await self.database.addNewUser(str(member.id))
             log.info("New user %s added to monitoring list.", member)
         except Exception as e:
             log.error("Error adding new user %s to DB: %s", member, e)
@@ -166,7 +166,7 @@ class Events(commands.Cog):
         # Add ban log to DB. The Unban button needs the same reason text for delBan:
         # it is stored in the embed.
         reason = ban_entry.reason or NO_BAN_REASON
-        self.database.addBan(str(user.id), str(user), reason)
+        await self.database.addBan(str(user.id), str(user), reason)
 
         author = None
 
@@ -247,7 +247,7 @@ class Events(commands.Cog):
 
         await channel.send(content=None, embed=embed)
 
-        self.database.addKick(str(member.id), str(member.name), reason)
+        await self.database.addKick(str(member.id), str(member.name), reason)
 
     async def log_timeout(self, payload, author=None, reason=None):
         """Log a timeout, with a button to undo it."""
@@ -366,7 +366,7 @@ async def check_jac(self, message):
             return
         # Save entries in JAC db, check if existence
 
-        if self.database.getJacByID(str(message.author.id)):
+        if await self.database.getJacByID(str(message.author.id)):
 
             # DB logging happens within function
             await issue_warn(
@@ -376,7 +376,7 @@ async def check_jac(self, message):
             )
             await message.delete()
             # Add to kill counter
-            self.database.addKillCount(str(message.author.id))
+            await self.database.addKillCount(str(message.author.id))
 
         else:
             # Get timestamp
@@ -384,7 +384,7 @@ async def check_jac(self, message):
             date = now.strftime(TIME_FORMAT)
 
             # Add entry because wasn't there before
-            self.database.addJac(str(message.author.id), JAC_NO_LINK, date)
+            await self.database.addJac(str(message.author.id), JAC_NO_LINK, date)
 
 
 async def issue_warn(self, message, warning):
@@ -401,12 +401,12 @@ async def issue_warn(self, message, warning):
     # if the author is in the warnings database,
     # increase the relative warnings counter
 
-    if self.database.getWarnUserByID(str(message.author.id)) is not None:
+    if await self.database.getWarnUserByID(str(message.author.id)) is not None:
 
-        self.database.addWarning(str(message.author.id), str(message.author.name), reason)
+        await self.database.addWarning(str(message.author.id), str(message.author.name), reason)
 
         # Check if multiple 14-days violation warnings
-        count = self.database.getWarnCount(str(message.author.id), reason)
+        count = await self.database.getWarnCount(str(message.author.id), reason)
 
         # If second violation, kick from the server
         # and notify user in DMs
@@ -423,7 +423,7 @@ async def issue_warn(self, message, warning):
             await message.guild.kick(message.author, reason=reason)
         elif count == 4:
             reason = "Ban: Multiple kicks for violation of 14-day rule in JAC"
-            #self.database.addBan(str(message.author.id), str(message.author.name), reason)
+            #await self.database.addBan(str(message.author.id), str(message.author.name), reason)
             try:
                 await message.author.send(
                     "You have been banned from Drewski's Operators server for violating the 14-day wait period for clan ads multiple times."
@@ -434,7 +434,7 @@ async def issue_warn(self, message, warning):
             return
 
     else:
-        self.database.addWarning(str(message.author.id), str(message.author), reason)
+        await self.database.addWarning(str(message.author.id), str(message.author), reason)
 
     # Generate log embed
     embed = discord.Embed(

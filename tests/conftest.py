@@ -69,6 +69,7 @@ except ImportError:
 
 _db_stub = types.ModuleType("cogs.database")
 _db_stub.Database = lambda bot: MagicMock()
+_db_stub.AsyncDatabase = lambda bot: AsyncMock()
 sys.modules.setdefault("cogs.database", _db_stub)
 
 

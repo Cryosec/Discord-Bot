@@ -33,7 +33,7 @@ def _cog():
     guild.fetch_member = AsyncMock(return_value=member)
     bot.get_guild.return_value = guild
     cog = events.Events(bot)
-    cog.database = MagicMock()
+    cog.database = AsyncMock()
     return cog, channel, guild, member
 
 

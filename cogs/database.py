@@ -1,4 +1,5 @@
 # pylint: disable=F0401, W0702, W0703, W0105, W0613, W1203
+import asyncio
 import os
 import sys # For sys.exit on critical errors
 from dotenv import load_dotenv
@@ -463,6 +464,143 @@ class Database(commands.Cog):
         else: # amount < 0
             log.error(f"Invalid amount ({amount}) passed to delKillCount for user {user_id}.")
             return 0
+
+
+# --- Async facade ---
+class AsyncDatabase:
+    """Awaitable twin of Database: each call runs in a worker thread.
+
+    The sync Database blocks the event loop, so bot code awaits this facade.
+    One asyncio.Semaphore of POOL_CONFIG['pool_size'] slots is stored on the
+    bot (bot.db_limiter) and shared by every facade: cogs and franky.py build
+    their own, and cogwatch builds new cog instances on reload, but the bot
+    object (and so the limiter) lives as long as the process. A slot is freed
+    when the worker thread ends (done callback of the executor future), never
+    when the awaiting coroutine is cancelled: a cancelled await leaves the
+    query running, and its pooled connection busy, until it ends.
+    The methods are explicit (no __getattr__): a typo fails at import.
+    """
+
+    def __init__(self, bot):
+        self.bot = bot
+        self._db = Database(bot)
+
+    def _limiter(self):
+        limiter = getattr(self.bot, "db_limiter", None)
+        if not isinstance(limiter, asyncio.Semaphore):
+            limiter = asyncio.Semaphore(POOL_CONFIG['pool_size'])
+            self.bot.db_limiter = limiter
+        return limiter
+
+    async def _run(self, func, *args, **kwargs):
+        limiter = self._limiter()
+        await limiter.acquire()
+        loop = asyncio.get_running_loop()
+        try:
+            future = loop.run_in_executor(None, lambda: func(*args, **kwargs))
+        except BaseException:
+            limiter.release()
+            raise
+
+        def _done(fut):
+            # Runs when the thread ends. Reading the result stops the
+            # "exception was never retrieved" warning of a cancelled caller.
+            if not fut.cancelled():
+                fut.exception()
+            limiter.release()
+
+        future.add_done_callback(_done)
+        # shield: cancelling the caller does not cancel the executor future
+        return await asyncio.shield(future)
+
+    ### JAC ###
+    async def getJac(self):
+        return await self._run(self._db.getJac)
+
+    async def getJacByID(self, user_id: str):
+        return await self._run(self._db.getJacByID, user_id)
+
+    async def addJac(self, user_id: str, link: str, date: str, guild_id: str = None):
+        return await self._run(self._db.addJac, user_id, link, date, guild_id)
+
+    async def delJac(self, user_id: str):
+        return await self._run(self._db.delJac, user_id)
+
+    async def getLink(self, link: str):
+        return await self._run(self._db.getLink, link)
+
+    ### TIMERS ###
+    async def addTimerMute(self, user_id: str, endMute: str):
+        return await self._run(self._db.addTimerMute, user_id, endMute)
+
+    async def addTimerBan(self, user_id: str, endBan: str):
+        return await self._run(self._db.addTimerBan, user_id, endBan)
+
+    async def getTimers(self):
+        return await self._run(self._db.getTimers)
+
+    async def endTimerMute(self, user_id: str):
+        return await self._run(self._db.endTimerMute, user_id)
+
+    async def endTimerBan(self, user_id: str):
+        return await self._run(self._db.endTimerBan, user_id)
+
+    async def delTimer(self, user_id):
+        return await self._run(self._db.delTimer, user_id)
+
+    ### INFRACTIONS ###
+    async def getWarnUsers(self):
+        return await self._run(self._db.getWarnUsers)
+
+    async def getWarnUserByID(self, user_id: str):
+        return await self._run(self._db.getWarnUserByID, user_id)
+
+    async def getWarnReasons(self, user_id: str):
+        return await self._run(self._db.getWarnReasons, user_id)
+
+    async def getWarnCount(self, user_id: str, reason: str):
+        return await self._run(self._db.getWarnCount, user_id, reason)
+
+    async def addWarning(self, user_id: str, tag: str, reason: str):
+        return await self._run(self._db.addWarning, user_id, tag, reason)
+
+    async def delWarning(self, user_id: str, reason: str = None):
+        return await self._run(self._db.delWarning, user_id, reason)
+
+    async def addKick(self, user_id: str, tag: str, reason: str):
+        return await self._run(self._db.addKick, user_id, tag, reason)
+
+    async def delKick(self, user_id: str, reason: str):
+        return await self._run(self._db.delKick, user_id, reason)
+
+    async def addBan(self, user_id: str, tag: str, reason: str):
+        return await self._run(self._db.addBan, user_id, tag, reason)
+
+    async def delBan(self, user_id: str, reason: str):
+        return await self._run(self._db.delBan, user_id, reason)
+
+    ### NEW USERS ###
+    async def addNewUser(self, user_id: str):
+        return await self._run(self._db.addNewUser, user_id)
+
+    async def checkNewUser(self, user_id: str):
+        return await self._run(self._db.checkNewUser, user_id)
+
+    async def incrementNewUser(self, user_id: str):
+        return await self._run(self._db.incrementNewUser, user_id)
+
+    async def removeNewUser(self, user_id: str):
+        return await self._run(self._db.removeNewUser, user_id)
+
+    ### KILL BOARD ###
+    async def getKillCount(self, user_id: str):
+        return await self._run(self._db.getKillCount, user_id)
+
+    async def addKillCount(self, user_id: str):
+        return await self._run(self._db.addKillCount, user_id)
+
+    async def delKillCount(self, user_id: str, amount: int):
+        return await self._run(self._db.delKillCount, user_id, amount)
 
 
 def setup(bot):

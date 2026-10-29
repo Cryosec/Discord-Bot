@@ -22,7 +22,7 @@ def _ctx():
 
 def _mod_cog():
     cog = moderation_slash.ModerationSlash(MagicMock())
-    cog.database = MagicMock()
+    cog.database = AsyncMock()
     return cog
 
 

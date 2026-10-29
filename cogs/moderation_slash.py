@@ -45,9 +45,9 @@ class ModerationSlash(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        self.database = db.Database(self.bot)
+        self.database = db.AsyncDatabase(self.bot)
 
-    def end_timer(self, user_id: str, kind: str, end: str = None) -> bool:
+    async def end_timer(self, user_id: str, kind: str, end: str = None) -> bool:
         """End the "mute" or "ban" timer of a user. False if it is not running.
 
         One row holds both timers: delete the row only when the other timer is
@@ -55,13 +55,13 @@ class ModerationSlash(commands.Cog):
         is still `end`: a newer command or check_timers can have replaced it.
         """
         end_key, other = ("endMute", "ban") if kind == "mute" else ("endBan", "mute")
-        row = next((r for r in self.database.getTimers() if str(r['user_id']) == user_id), None)
+        row = next((r for r in await self.database.getTimers() if str(r['user_id']) == user_id), None)
         if row is None or not row[kind] or (end is not None and row[end_key] != end):
             return False
         if row[other]:
-            (self.database.endTimerMute if kind == "mute" else self.database.endTimerBan)(user_id)
+            await (self.database.endTimerMute if kind == "mute" else self.database.endTimerBan)(user_id)
         else:
-            self.database.delTimer(user_id)
+            await self.database.delTimer(user_id)
         return True
 
     # /mute Command
@@ -113,7 +113,7 @@ class ModerationSlash(commands.Cog):
             delta, dur = parsed
             end_string = (datetime.now(tz_TX) + delta).strftime("%b-%d-%Y %H:%M:%S")
 
-            self.database.addTimerMute(str(member.id), end_string)
+            await self.database.addTimerMute(str(member.id), end_string)
 
             await member.add_roles(role)
 
@@ -140,7 +140,7 @@ class ModerationSlash(commands.Cog):
 
             await asyncio.sleep(int(delta.total_seconds()))
             # A newer /mute, an /unmute or check_timers can have ended this timer
-            if not self.end_timer(str(member.id), "mute", end_string):
+            if not await self.end_timer(str(member.id), "mute", end_string):
                 return
             await member.remove_roles(role)
             log.info("Timer ended - User %s has been unmuted", member)
@@ -168,7 +168,7 @@ class ModerationSlash(commands.Cog):
             await member.remove_roles(role)
             log.info("User %s was unmuted", member)
 
-            self.end_timer(str(member.id), "mute")
+            await self.end_timer(str(member.id), "mute")
 
             await ctx.respond(
                 embed=discord.Embed(
@@ -247,7 +247,7 @@ class ModerationSlash(commands.Cog):
                 delta, dur = parsed
                 end_string = (datetime.now(tz_TX) + delta).strftime("%b-%d-%Y %H:%M:%S")
 
-                self.database.addTimerBan(str(member.id), end_string)
+                await self.database.addTimerBan(str(member.id), end_string)
 
                 embed = discord.Embed(
                     title="Temp Ban issued!",
@@ -284,7 +284,7 @@ class ModerationSlash(commands.Cog):
 
                 await asyncio.sleep(int(delta.total_seconds()))
                 # A newer /tempban or check_timers can have ended this timer
-                if not self.end_timer(str(member.id), "ban", end_string):
+                if not await self.end_timer(str(member.id), "ban", end_string):
                     return
 
                 embed = discord.Embed(
@@ -360,8 +360,8 @@ class ModerationSlash(commands.Cog):
                 role_mentions = [role.mention for role in roles]
                 role_list = ", ".join(role_mentions)
 
-                warn_reasons = self.database.getWarnReasons(str(member.id))
-                warn_user = self.database.getWarnUserByID(str(member.id))
+                warn_reasons = await self.database.getWarnReasons(str(member.id))
+                warn_user = await self.database.getWarnUserByID(str(member.id))
 
                 if warn_user:
                     embed = discord.Embed(
@@ -411,8 +411,8 @@ class ModerationSlash(commands.Cog):
                 await ctx.respond(content=None, embed=embed)
 
             else:
-                warn_reasons = self.database.getWarnReasons(str(user.id))
-                warn_user = self.database.getWarnUserByID(str(user.id))
+                warn_reasons = await self.database.getWarnReasons(str(user.id))
+                warn_user = await self.database.getWarnUserByID(str(user.id))
                 if warn_user:
                     embed = discord.Embed(
                         title=f"Status of user {user}",
@@ -459,8 +459,8 @@ class ModerationSlash(commands.Cog):
         """Warn the selected user."""
         print(f"INFO: Warning {member}...")
         try:
-            self.database.addWarning(str(member.id), str(member.name), reason)
-            warn_users = self.database.getWarnUserByID(str(member.id))
+            await self.database.addWarning(str(member.id), str(member.name), reason)
+            warn_users = await self.database.getWarnUserByID(str(member.id))
             channel = ctx.guild.get_channel(config.LOG_CHAN)
             embed = discord.Embed(
                 title="Warning issued!",
@@ -496,7 +496,7 @@ class ModerationSlash(commands.Cog):
         """
         if member is not None:
 
-            warn_user = self.database.getWarnUserByID(str(member.id))
+            warn_user = await self.database.getWarnUserByID(str(member.id))
             if not warn_user or not warn_user['warnings']:
                 await ctx.respond(
                     embed=discord.Embed(title=f"{member} has no warnings to remove."),
@@ -504,7 +504,7 @@ class ModerationSlash(commands.Cog):
                 )
                 return
 
-            self.database.delWarning(str(member.id))
+            await self.database.delWarning(str(member.id))
 
             # Reply to command
             await ctx.respond(
@@ -539,7 +539,7 @@ class ModerationSlash(commands.Cog):
     ):
         """Remove the JAC entry for the selected user."""
         if member is not None:
-            self.database.delJac(str(member.id))
+            await self.database.delJac(str(member.id))
             await ctx.respond(
                 embed=discord.Embed(
                     title=f"JAC entry removed for user {member}", colour=config.GREEN
@@ -558,7 +558,7 @@ class ModerationSlash(commands.Cog):
     async def show_timers(self, ctx, group: str = None):
         """Show a list of currently active timers."""
         if group is None:
-            t = self.database.getTimers()
+            t = await self.database.getTimers()
 
             timers = []
             for elem in t:
@@ -695,10 +695,10 @@ class ModerationSlash(commands.Cog):
     ):
         """Get total kill count or specific count for a member"""
         if not member:
-            counter = self.database.getKillCount("*")
+            counter = await self.database.getKillCount("*")
             await ctx.respond(f"Total kill counter is {counter}.")
         else:
-            counter = self.database.getKillCount(str(member.id))
+            counter = await self.database.getKillCount(str(member.id))
             await ctx.respond(f"Kill count for member {member} is {counter}.")
 
 

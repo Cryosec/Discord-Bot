@@ -17,7 +17,7 @@ JAC_DAYS = 14
 
 async def check_jac_timers(database, now):
     """Remove the JAC entries older than 14 days. A bad row does not stop the others."""
-    for elem in database.getJac():
+    for elem in await database.getJac():
         try:
             entry_time = datetime.strptime(elem['date'], TIME_FORMAT)
         except (TypeError, ValueError):
@@ -25,7 +25,7 @@ async def check_jac_timers(database, now):
             continue
         if entry_time + timedelta(days=JAC_DAYS) < now:
             print(f"Removing entry for {elem['user_id']}")
-            database.delJac(elem['user_id'])
+            await database.delJac(elem['user_id'])
 
 
 async def check_mute_timers(now, time_db, guild, channel) -> bool:
@@ -101,7 +101,7 @@ async def check_all(database, guild, channel, now):
     except:
         log.exception("Error while checking JAC timers")
 
-    for elem in database.getTimers():
+    for elem in await database.getTimers():
         try:
             user_id = str(elem['user_id'])
             print(f"{user_id} - Ban: {elem['ban']}, Mute: {elem['mute']}")
@@ -114,10 +114,10 @@ async def check_all(database, guild, channel, now):
             # use it only when no timer is left.
             if not mute_left and not ban_left:
                 print(f"\nUser {user_id} has no more timers. Removing from db...")
-                database.delTimer(user_id)
+                await database.delTimer(user_id)
             elif mute_ended:
-                database.endTimerMute(user_id)
+                await database.endTimerMute(user_id)
             elif ban_ended:
-                database.endTimerBan(user_id)
+                await database.endTimerBan(user_id)
         except:
             log.exception("Error while checking the timers of %s", elem.get('user_id'))

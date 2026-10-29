@@ -92,7 +92,7 @@ class Honeypot(commands.Cog):
     def __init__(self, bot):
         """Initialize Honeypot cog."""
         self.bot = bot
-        self.database = db.Database(self.bot)
+        self.database = db.AsyncDatabase(self.bot)
         # User IDs of the members that are under punishment, to avoid double bans
         self.processing = set()
         self.review_locks = {}  # review message ID -> asyncio.Lock, see support.press

@@ -84,7 +84,7 @@ def env(monkeypatch):
     state._get_message.return_value = None
 
     cog = automod.AutoMod(bot)
-    cog.database = MagicMock()
+    cog.database = AsyncMock()
 
     def fire(*args, **kwargs):
         asyncio.run(cog.on_auto_moderation_action_execution(_event(*args, state=state, **kwargs)))

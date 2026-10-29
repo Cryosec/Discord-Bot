@@ -122,7 +122,7 @@ class Jac(commands.Cog):
     def __init__(self, bot):
         """Initialize Jac cog."""
         self.bot = bot
-        self.database = db.Database(self.bot)
+        self.database = db.AsyncDatabase(self.bot)
         # Validation and posting run one at a time, so the 14-day dedup holds
         self.lock = asyncio.Lock()
         # Loaded or reloaded (cogwatch) while the bot runs: on_ready does not fire again
@@ -150,7 +150,7 @@ class Jac(commands.Cog):
         self, ctx, member: Option(discord.Member, "Member for which to show JAC status")
     ):
         """Get the details of the JAC entry for a selected user (moderators)."""
-        jac = self.database.getJacByID(str(member.id))
+        jac = await self.database.getJacByID(str(member.id))
 
         if len(jac) > 0:
             now = datetime.now(tz_TX)
@@ -217,7 +217,7 @@ class Jac(commands.Cog):
         # check_timers removes rows older than 14 days only once per hour
         now = datetime.now(tz_TX).replace(tzinfo=None)
         recent = []
-        for row in self.database.getJac():
+        for row in await self.database.getJac():
             try:
                 again = datetime.strptime(row['date'], TIME_FORMAT) + timedelta(days=JAC_DAYS)
             except (TypeError, ValueError):
@@ -279,7 +279,7 @@ class Jac(commands.Cog):
         message = await channel.send(embed=embed)
 
         try:
-            self.database.addJac(str(user.id), link, datetime.now(tz_TX).strftime(TIME_FORMAT),
+            await self.database.addJac(str(user.id), link, datetime.now(tz_TX).strftime(TIME_FORMAT),
                                  guild_id=post.guild_id)
         except Exception:
             log.exception("Clan ad of %s posted but not stored", user.id)

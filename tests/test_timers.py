@@ -12,7 +12,7 @@ PAST, FUTURE = "Oct-29-2026 11:00:00", "Oct-29-2026 13:00:00"
 
 
 def _setup(rows):
-    database = MagicMock()
+    database = AsyncMock()
     database.getJac.return_value = []
     database.getTimers.return_value = rows
     guild = MagicMock()
