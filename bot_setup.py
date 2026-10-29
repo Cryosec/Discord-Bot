@@ -3,12 +3,12 @@ import discord
 
 INIT_EXTENSIONS = [
     "cogs.admin",
-    "cogs.moderation",
     "cogs.moderation_slash",
     "cogs.users",
     "cogs.users-slash",
     "cogs.events",
     "cogs.automod",
+    "cogs.jac",
     "cogs.honeypot",
     #"cogs.giveaway",
     #"cogs.poll",

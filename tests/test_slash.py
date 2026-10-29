@@ -40,7 +40,11 @@ def test_all_extensions_load_with_the_final_intents():
         return bot
 
     bot = asyncio.run(load())
-    assert {"AutoMod", "Events", "ModerationSlash", "UsersSlash"} <= set(bot.cogs)
+    assert {"AutoMod", "Events", "ModerationSlash", "UsersSlash", "Jac"} <= set(bot.cogs)
+    prefix = {c.name for c in bot.commands}
+    removed = {"ping", "lundy", "toxy", "floppa", "avyy", "lotto", "tim", "help"}
+    assert not prefix & removed
+    assert {"load", "unload", "reload", "reconf"} <= prefix  # owner admin commands stay
     assert "cogs.automod" in bot_setup.INIT_EXTENSIONS
 
 
@@ -139,3 +143,7 @@ def test_me_with_default_avatar():
     asyncio.run(cog.me.callback(cog, ctx))
     embed = ctx.respond.await_args.kwargs["embed"]
     assert embed.thumbnail.url == member.display_avatar.url
+
+
+def test_jac_info_moved_to_the_jac_group():
+    assert "jac" not in {c.name for c in _mod_cog().get_commands()}

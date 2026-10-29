@@ -549,38 +549,6 @@ class ModerationSlash(commands.Cog):
                     title="User is not part of the server", colour=config.YELLOW
                 )
             )
-    # /jac Command
-    @slash_command(guild_ids=[config.GUILD], name="jac", default_member_permissions=MOD_PERMISSIONS)
-    @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
-    async def jac_details(
-        self, ctx, member: Option(discord.Member, "Member for which to show JAC status")
-    ):
-        """Get the details of the JAC entry for a selected user."""
-        jac = self.database.getJacByID(str(member.id))
-
-        if len(jac) > 0:
-            tz_TX = pytz.timezone("US/Central")
-            now = datetime.now(tz_TX)
-            dt = datetime.strptime(jac[0]['date'], "%b-%d-%Y %H:%M:%S")
-            dt = dt.replace(tzinfo=tz_TX)
-
-            end = dt + timedelta(days=14)
-
-            delta = end - now
-
-            embed = discord.Embed(
-                title=f"User {member}",
-                description=jac[0]['link'],
-                colour=config.GREEN,
-            )
-            embed.add_field(name="Timestamp", value=jac[0]['date'])
-            embed.add_field(name="Time left", value=str(delta), inline=False)
-            embed.set_footer(text=config.FOOTER)
-
-            await ctx.respond(content=None, embed=embed)
-        else:
-            await ctx.respond("User is not in the database")
-
     # /unjac command
     @slash_command(guild_ids=[config.GUILD], name="unjac", default_member_permissions=MOD_PERMISSIONS)
     @commands.has_any_role(config.MOD_ID, config.ADMIN_ID)
