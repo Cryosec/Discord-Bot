@@ -198,25 +198,10 @@ class ModerationSlash(commands.Cog):
             await ctx.respond("You cannot ban a moderator through me.")
         else:
 
-            tz_TX = pytz.timezone("US/Central")
-            now = datetime.now(tz_TX)
-            dt = now.strftime("%b-%d-%Y %H:%M:%S")
-
-            # Create feedback embed
-            embed = discord.Embed(
-                title="User ban issued!",
-                description=f"Reason: {reason}",
-                colour=config.RED,
-            )
-            embed.add_field(name="Issuer:", value=ctx.author.mention)
-            embed.add_field(name="Banned:", value=member.mention)
-            embed.add_field(name="When:", value=dt)
-            embed.set_footer(text=config.FOOTER)
-
-            # Record ban
-            # already done in events.py inside on_member_ban
-
-            await ctx.guild.ban(member, reason=reason)
+            # Record ban and log embed: done in events.py inside on_member_ban.
+            # The audit reason names the mod, as the audit author is the bot.
+            audit_reason = f"{reason or 'No reason given'} (by {ctx.author})"
+            await ctx.guild.ban(member, reason=audit_reason)
             log.info("User %s was banned", member)
             await ctx.respond(
                 embed=discord.Embed(
@@ -224,8 +209,6 @@ class ModerationSlash(commands.Cog):
                     colour=config.RED,
                 )
             )
-            channel = ctx.guild.get_channel(config.LOG_CHAN)
-            await channel.send(content=None, embed=embed)
 
     # /tempban Command
     @slash_command(guild_ids=[config.GUILD], name="tempban", default_member_permissions=MOD_PERMISSIONS)

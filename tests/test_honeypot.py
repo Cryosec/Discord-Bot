@@ -73,3 +73,12 @@ def test_purge_logs_count_not_content(monkeypatch):
     logged = str(log.info.call_args_list)
     assert "SECRET-CONTENT" not in logged
     assert "2" in logged
+
+
+def test_honeypot_reason_is_a_review_timeout_reason(monkeypatch):
+    monkeypatch.setattr(honeypot.config, "HONEYPOT_REASON", "Honeypot hit", raising=False)
+    assert honeypot.support.is_review_timeout("Honeypot hit")
+    monkeypatch.setattr(honeypot.config, "HONEYPOT_REASON", "Changed by reconf", raising=False)
+    assert honeypot.support.is_review_timeout("Changed by reconf")
+    assert not honeypot.support.is_review_timeout("Honeypot hit")
+    assert not honeypot.support.is_review_timeout(None)

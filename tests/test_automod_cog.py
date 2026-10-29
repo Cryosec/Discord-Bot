@@ -112,6 +112,7 @@ def test_scam_times_out_and_posts_review_without_content(env):
     env.fire(ar.SCAM)
     env.member.timeout_for.assert_awaited_once()
     assert env.member.timeout_for.await_args.kwargs["duration"].days == 1
+    assert env.member.timeout_for.await_args.kwargs["reason"] == automod.support.AUTOMOD_REVIEW_REASON
     embed = _embed(env.log_chan)
     fields = {f.name: f.value for f in embed.fields}
     assert embed.title == "Possible scam - manual review"

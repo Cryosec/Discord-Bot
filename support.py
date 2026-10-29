@@ -120,6 +120,21 @@ class Untimeout(discord.ui.View):
 tz_TX = pytz.timezone("US/Central")
 TIME_FORMAT = "%b-%d-%Y %H:%M:%S"
 
+# Audit-log reasons of the bot's own review timeouts: they already have a
+# review embed, so events.log_timeout does not log them a second time.
+AUTOMOD_REVIEW_REASON = "Temporary timeout for spam review"
+
+
+def is_review_timeout(reason):
+    """True if `reason` is the audit reason of a bot review timeout.
+
+    The honeypot reason is read at call time: !reconf reloads config.py.
+    """
+    if not reason:
+        return False
+    return reason in (AUTOMOD_REVIEW_REASON, getattr(config, "HONEYPOT_REASON", None))
+
+
 # Support function for timeout log event
 def timeout_embed(
     bot: discord.Bot, user: discord.Member, author: discord.Member, reason: str

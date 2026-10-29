@@ -176,6 +176,12 @@ class Events(commands.Cog):
 
     async def log_timeout(self, payload, author=None, reason=None):
         """Log a timeout, with a button to undo it."""
+        # The bot's own review timeouts have a review embed already.
+        # /timeout, /rr and AutoMod's TIMEOUT action have the bot as author too:
+        # only the review reasons are skipped.
+        if (payload.user_id == self.bot.user.id
+                and support.is_review_timeout(payload.reason)):
+            return
         guild = self.bot.get_guild(payload.guild_id)
         user = await self._get_user(payload.target_id)
         if author is None:

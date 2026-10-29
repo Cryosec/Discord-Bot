@@ -260,3 +260,43 @@ def test_ban_author_is_found_among_recent_entries(monkeypatch):
     ours = MagicMock(target=MagicMock(id=1), user="mod")
     _, channel = _ban_setup(monkeypatch, "spam", [other, ours])
     assert channel.send.await_args.kwargs["embed"].description.endswith("by mod.")
+
+
+def _bot_timeout(cog, reason):
+    """Audit entry of a timeout whose author is the bot itself (user id 2)."""
+    cog.bot.user.id = 2
+    changes = [{"key": "communication_disabled_until", "new_value": TS}]
+    return _payload(discord.AuditLogAction.member_update, changes, reason=reason)
+
+
+def test_bot_review_timeout_is_not_logged_twice(monkeypatch):
+    cog, channel, _, _ = _cog()
+    monkeypatch.setattr(events.config, "HONEYPOT_REASON", "Honeypot hit", raising=False)
+    for reason in (events.support.AUTOMOD_REVIEW_REASON, "Honeypot hit"):
+        asyncio.run(cog.on_raw_audit_log_entry(_bot_timeout(cog, reason)))
+    channel.send.assert_not_awaited()
+
+
+def test_bot_timeout_command_keeps_its_embed(monkeypatch):
+    cog, channel, _, _ = _cog()
+    view = MagicMock()
+    view.wait = AsyncMock()
+    view.value = False
+    monkeypatch.setattr(events.support, "Untimeout", lambda: view)
+    asyncio.run(cog.on_raw_audit_log_entry(_bot_timeout(cog, "spamming")))
+    asyncio.run(cog.on_raw_audit_log_entry(_bot_timeout(cog, None)))
+    assert channel.send.await_count == 2
+
+
+def test_mod_timeout_with_a_review_reason_keeps_its_embed(monkeypatch):
+    cog, channel, _, _ = _cog()
+    cog.bot.user.id = 999  # the author (id 2) is a mod, not the bot
+    view = MagicMock()
+    view.wait = AsyncMock()
+    view.value = False
+    monkeypatch.setattr(events.support, "Untimeout", lambda: view)
+    changes = [{"key": "communication_disabled_until", "new_value": TS}]
+    asyncio.run(cog.on_raw_audit_log_entry(_payload(
+        discord.AuditLogAction.member_update, changes,
+        reason=events.support.AUTOMOD_REVIEW_REASON)))
+    channel.send.assert_awaited_once()

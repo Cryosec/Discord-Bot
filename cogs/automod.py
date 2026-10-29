@@ -177,7 +177,7 @@ class AutoMod(commands.Cog):
         if member is not None:
             try:
                 await member.timeout_for(duration=timedelta(days=1),
-                                         reason="Temporary timeout for spam review")
+                                         reason=support.AUTOMOD_REVIEW_REASON)
             except Exception as err:
                 log.error("Couldn't timeout user for spam review: %s", err)
 

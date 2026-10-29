@@ -321,3 +321,33 @@ def test_prefix_info_commands_with_the_default_bot_avatar():
     for command in (cog.roles, cog.twitch, cog.faq):
         asyncio.run(command.callback(cog, ctx))
         assert ctx.reply.await_args.kwargs["embed"].author.icon_url == bot.user.display_avatar.url
+
+
+def _ban_ctx():
+    ctx = _ctx()
+    ctx.author = MagicMock()
+    ctx.author.__str__ = lambda self: "mod#0"
+    ctx.guild.get_role.return_value = "mod-role"
+    ctx.guild.ban = AsyncMock()
+    ctx.guild.get_channel.return_value.send = AsyncMock()
+    return ctx
+
+
+def test_ban_posts_no_log_embed_and_names_the_mod():
+    cog = _mod_cog()
+    ctx = _ban_ctx()
+    member = _member()
+    member.roles = []
+    asyncio.run(cog.ban_user.callback(cog, ctx, member, "spam"))
+    ctx.guild.get_channel.return_value.send.assert_not_awaited()
+    ctx.respond.assert_awaited_once()
+    ctx.guild.ban.assert_awaited_once_with(member, reason="spam (by mod#0)")
+
+
+def test_ban_without_reason_names_the_mod():
+    cog = _mod_cog()
+    ctx = _ban_ctx()
+    member = _member()
+    member.roles = []
+    asyncio.run(cog.ban_user.callback(cog, ctx, member, None))
+    ctx.guild.ban.assert_awaited_once_with(member, reason="No reason given (by mod#0)")
