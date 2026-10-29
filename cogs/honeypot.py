@@ -200,8 +200,8 @@ async def purge_user_messages(guild, member):
     member wrote in the last config.HONEYPOT_PURGE_SECONDS seconds.
 
     Returns a dictionary with the channel name as key and the count as value.
-    The content of each deleted message goes to the log file, because the purge
-    is not reversible and a moderator can decide to release the member.
+    The log file gets the count per channel. The bot cannot read the content
+    of the messages (no MESSAGE_CONTENT intent), so the content is not logged.
     """
     seconds = getattr(config, "HONEYPOT_PURGE_SECONDS", 0)
     limit = getattr(config, "HONEYPOT_PURGE_LIMIT", 100)
@@ -241,11 +241,8 @@ async def purge_user_messages(guild, member):
 
         if deleted:
             result[channel.name] = len(deleted)
-            for msg in deleted:
-                log.info(
-                    "Honeypot purge: removed message of %s in #%s: %s",
-                    member.id, channel.name, msg.content[:500]
-                )
+            log.info("Honeypot purge: %s messages of %s removed in #%s",
+                     len(deleted), member.id, channel.name)
 
     if result:
         log.info("Honeypot purge: %s messages of %s removed",
@@ -263,7 +260,8 @@ async def honeypot_review_embed(self, message, purged=None):
     purged  -- dictionary of the channels cleaned by purge_user_messages
 
     Used only when config.HONEYPOT_AUTOBAN is False. The author is muted for
-    24 hours and a moderator decides between the ban and the release.
+    24 hours and a moderator decides between the ban and the release. The embed
+    has no message content: the bot cannot read it (no MESSAGE_CONTENT intent).
     """
     ban_button = HoneypotReview()
 
@@ -273,13 +271,6 @@ async def honeypot_review_embed(self, message, purged=None):
         colour=config.YELLOW,
     )
 
-    msg = (
-            (message.content[:1020] + "...")
-            if len(message.content) > 1024
-            else message.content
-            )
-
-    embed.add_field(name="Message", value=msg or "(no text)", inline=False)
     embed.add_field(name="Channel", value=message.channel.mention)
     embed.add_field(name="Author", value=message.author.mention)
     embed.add_field(
@@ -290,7 +281,7 @@ async def honeypot_review_embed(self, message, purged=None):
     )
 
     # Tell the moderators what the purge removed. The deletion is not
-    # reversible, the full content of the messages is in the bot log file.
+    # reversible, the embed shows the count per channel.
     if purged:
         cleaned = "\n".join(f"#{name}: {count}" for name, count in purged.items())
         embed.add_field(
@@ -311,7 +302,6 @@ async def honeypot_review_embed(self, message, purged=None):
         description=f"Review of the honeypot hit was done by {ban_button.user}",
         colour=config.GREEN,
     )
-    new_embed.add_field(name="Message", value=msg or "(no text)", inline=False)
     new_embed.add_field(name="Author", value=message.author.mention)
 
     # If mod confirms ban
